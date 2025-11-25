@@ -120,7 +120,7 @@ INSERT INTO __schema__.dim_storage_account (
     kind,
     status
 )
-SELECT DISTINCT
+SELECT DISTINCT ON (t1.resource_id)
     t1.storage_account_name,
     t1.resource_group,
     t1.subscription_id,
@@ -131,8 +131,10 @@ SELECT DISTINCT
     t1.replication AS replication_type,  -- Alias source column to match DIM column
     t1.kind,
     t1.storage_account_status AS status  -- Alias source column to match DIM column
+
 FROM
     __schema__.silver_azure_storage_metrics_clean t1
+ORDER BY t1.resource_id, t1.observation_timestamp DESC NULLS LAST
 ON CONFLICT (resource_id) DO UPDATE SET
     resource_group = EXCLUDED.resource_group,
     subscription_id = EXCLUDED.subscription_id,
