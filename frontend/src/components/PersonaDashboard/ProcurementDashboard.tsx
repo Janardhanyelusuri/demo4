@@ -89,13 +89,6 @@ const cloudPlatformConfig: Record<string, any> = {
       },
       {
         type: "bar",
-        title: "VPC COST BY INSTANCES",
-        queryType: "aws_cost_by_instance_vpc",
-        nameField: "view_fact_billing.servicename",
-        valueField: "view_fact_billing.total_billed_cost",
-      },
-      {
-        type: "bar",
         title: "CLOUD WATCH COST BY INSTANCES",
         queryType: "aws_cost_by_instance_cloud_watch",
         nameField: "view_fact_billing.servicename",
