@@ -112,6 +112,7 @@ export interface RecommendationFilters {
 export const AZURE_RESOURCES: CloudResourceMap[] = [
     { displayName: "VM", backendKey: "vm" },
     { displayName: "Storage Account", backendKey: "storage" },
+    { displayName: "Public IP", backendKey: "publicip" },
     { displayName: "Databricks", backendKey: "databricks" },
 ];
 
