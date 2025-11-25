@@ -11,19 +11,18 @@ API_VERSION_PUBLIC_IP = "2023-05-01"
 API_VERSION_METRICS = "2023-10-01"
 API_VERSION_METRIC_DEFS = "2023-10-01"
 
-# Metrics specific to Public IPs
-DESIRED_METRICS = [
-    "PacketCount",
-    "ByteCount",
-    "VipAvailability",
-    "DDoSTriggered", # Optional but often useful
-]
-
-PREFERRED_AGG = {
+# Default preferred aggregations for known metrics
+# This is used as a fallback if metric definitions don't specify aggregations
+DEFAULT_PREFERRED_AGG = {
     "PacketCount": "Total",
     "ByteCount": "Total",
     "VipAvailability": "Average",
     "DDoSTriggered": "Total",
+    "SynCount": "Total",
+    "TCPBytesForwardedDDoS": "Total",
+    "TCPBytesInDDoS": "Total",
+    "UDPBytesForwardedDDoS": "Total",
+    "UDPBytesInDDoS": "Total",
 }
 
 INTERVAL = os.getenv("INTERVAL", "PT1H")
@@ -59,7 +58,7 @@ def get_public_ip_details(data):
     """Extracts relevant dimension properties from the raw resource dict"""
     props = data.get("properties", {}) or {}
     sku = data.get("sku", {}) or {}
-    
+
     return {
         "sku": sku.get("name", "unknown"),
         "tier": sku.get("tier", "unknown"),
@@ -69,6 +68,53 @@ def get_public_ip_details(data):
         "ip_version": props.get("publicIPAddressVersion", "IPv4"),
         "provisioning_state": props.get("provisioningState", "unknown"),
     }
+
+def get_available_metrics(resource_id, headers):
+    """
+    Discover all available metrics for a given Public IP resource.
+    Returns a list of tuples: (metric_name, supported_aggregations)
+    """
+    url = (
+        f"https://management.azure.com{resource_id}/providers/microsoft.insights/metricDefinitions"
+        f"?api-version={API_VERSION_METRIC_DEFS}"
+    )
+    try:
+        r = requests.get(url, headers=headers, timeout=30)
+        if r.status_code != 200:
+            print(f"⚠️  Failed to fetch metric definitions: {r.status_code}")
+            return []
+
+        definitions = r.json().get("value", [])
+        metrics_info = []
+
+        for metric_def in definitions:
+            metric_name = metric_def.get("name", {}).get("value", "")
+            if not metric_name:
+                continue
+
+            # Get supported aggregation types
+            supported_aggs = metric_def.get("supportedAggregationTypes", [])
+
+            # Pick the best aggregation method
+            if "Total" in supported_aggs:
+                preferred_agg = "Total"
+            elif "Average" in supported_aggs:
+                preferred_agg = "Average"
+            elif "Maximum" in supported_aggs:
+                preferred_agg = "Maximum"
+            elif supported_aggs:
+                preferred_agg = supported_aggs[0]
+            else:
+                # Fallback to defaults
+                preferred_agg = DEFAULT_PREFERRED_AGG.get(metric_name, "Total")
+
+            metrics_info.append((metric_name, preferred_agg))
+
+        return metrics_info
+
+    except Exception as e:
+        print(f"❌ Error fetching metric definitions: {e}")
+        return []
 
 def fetch_metric_response(resource_id, metric_name, headers, timespan, interval, agg_to_use):
     metric_q = quote_plus(metric_name)
@@ -104,9 +150,15 @@ def collect_all_public_ip_metrics(public_ips, headers, timespan, interval, subsc
 
         details = get_public_ip_details(pip)
 
-        for metric_name in DESIRED_METRICS:
-            # Simple aggregation logic (can be expanded if needed like storage script)
-            agg_to_use = PREFERRED_AGG.get(metric_name, "Total")
+        # Discover available metrics for this Public IP
+        available_metrics = get_available_metrics(resource_id, headers)
+        if not available_metrics:
+            print(f"⚠️  No metrics available for {name}, skipping...")
+            continue
+
+        print(f"✅ Found {len(available_metrics)} available metric(s)")
+
+        for metric_name, agg_to_use in available_metrics:
             
             resp = fetch_metric_response(resource_id, metric_name, headers, timespan, interval, agg_to_use)
             time.sleep(SLEEP_BETWEEN_CALLS)

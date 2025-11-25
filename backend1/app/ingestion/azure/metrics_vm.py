@@ -33,13 +33,18 @@ days_back = 90
 
 
 def create_hash_key(df, columns):
-    # Placeholder for hash key generation logic
-    df['hash_key'] = df[columns].astype(str).sum(axis=1).apply(lambda x: hash(x) % (10**8))
+    # Generate hash key using MD5 for better collision resistance
+    import hashlib
+    def generate_hash(row):
+        row_string = ''.join(str(row[col]) for col in columns)
+        return int(hashlib.md5(row_string.encode('utf-8')).hexdigest(), 16) % (10**18)
+    df['hash_key'] = df.apply(generate_hash, axis=1)
     return df
 
 def fetch_existing_hash_keys(schema_name, table_name):
-    # Placeholder for fetching existing keys for deduplication
-    return set() # Return an empty set for this example
+    # Fetch existing hash keys from the database for deduplication
+    from app.ingestion.azure.postgres_operation import fetch_existing_hash_keys as fetch_keys
+    return fetch_keys(schema_name, table_name)
 
 def get_available_metrics(vm_id, headers):
     url = (
@@ -212,8 +217,17 @@ def metrics_dump(tenant_id, client_id, client_secret,subscription_id,schema_name
         key_columns = ["resource_id", "timestamp", "metric_name", "subscription_id"]
 
         # ✅ FIX: Call the function with the required 'columns' argument
-        all_metrics_df = create_hash_key(all_metrics_df, key_columns) 
+        all_metrics_df = create_hash_key(all_metrics_df, key_columns)
 
-        dump_to_postgresql(all_metrics_df, schema_name, table_name)
+        # Fetch existing hash keys and filter out duplicates
+        print(f"🔍 Checking for existing records in {schema_name}.{table_name}...")
+        existing_hash_keys = fetch_existing_hash_keys(schema_name, table_name)
+        new_metrics_df = all_metrics_df[~all_metrics_df['hash_key'].isin(existing_hash_keys)]
+
+        if new_metrics_df.empty:
+            print("⚠️ No new records to insert. All records already exist.")
+        else:
+            print(f"✅ Inserting {len(new_metrics_df)} new records (filtered {len(all_metrics_df) - len(new_metrics_df)} duplicates)")
+            dump_to_postgresql(new_metrics_df, schema_name, table_name)
     else:
         print("⚠️ No data collected to dump.")
