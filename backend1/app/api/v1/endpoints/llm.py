@@ -12,7 +12,7 @@ from app.core.llm_cache_utils import generate_cache_hash_key, get_cached_result,
 from app.core.task_manager import task_manager
 try:
     from app.ingestion.aws.llm_s3_integration import run_llm_analysis_s3
-    from app.ingestion.aws.llm_ec2_vpc_integration import run_llm_analysis as run_llm_analysis_ec2_vpc
+    from app.ingestion.aws.llm_ec2_integration import run_llm_analysis as run_llm_analysis_ec2
     from app.ingestion.azure.llm_data_fetch import run_llm_analysis
     # from app.ingestion.gcp.llm import run_llm_analysis_gcp # <-- Keeping this commented to resolve the 404
 except ImportError as e:
@@ -108,8 +108,8 @@ async def llm_aws(
             end_date=payload.end_date,
             resource_id=payload.resource_id
         )
-    elif resource_type_lower in ['ec2', 'vpc']:
-        result = run_llm_analysis_ec2_vpc(
+    elif resource_type_lower == 'ec2':
+        result = run_llm_analysis_ec2(
             resource_type=payload.resource_type,
             schema_name=schema,
             start_date=payload.start_date,
@@ -119,7 +119,7 @@ async def llm_aws(
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported AWS resource type: {payload.resource_type}. Supported types: s3, ec2, vpc"
+            detail=f"Unsupported AWS resource type: {payload.resource_type}. Supported types: s3, ec2"
         )
 
     return LLMResponse(

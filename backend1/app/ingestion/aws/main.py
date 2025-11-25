@@ -9,7 +9,8 @@ from app.ingestion.aws.export_ops import create_export, update_export, create_bo
 from app.ingestion.aws.s3 import *
 from app.ingestion.aws.postgres_operations import execute_sql_files, dump_to_postgresql
 from .resource_metrics import fetch_and_store_cloudwatch_metrics
-from app.ingestion.aws.metrics_s3 import metrics_dump
+from app.ingestion.aws.metrics_s3 import metrics_dump as metrics_dump_s3
+from app.ingestion.aws.metrics_ec2 import metrics_dump as metrics_dump_ec2
 
 
 
@@ -291,10 +292,17 @@ def aws_run_ingestion(project_name,
                         print(f"Parquet gold views created....")
                 else:
                     print(f"No new data to append for file: {latest_file}")
+        # S3 Metrics Ingestion
         execute_sql_files(f'{base_path}/sql/bronze_s3_metrics.sql', schema_name, monthly_budget)
-        metrics_dump(aws_access_key, aws_secret_key,aws_region,schema_name )
+        metrics_dump_s3(aws_access_key, aws_secret_key, aws_region, schema_name)
         execute_sql_files(f'{base_path}/sql/silver_s3_metrics.sql', schema_name, monthly_budget)
         execute_sql_files(f'{base_path}/sql/gold_s3_metrics.sql', schema_name, monthly_budget)
+
+        # EC2 Metrics Ingestion
+        execute_sql_files(f'{base_path}/sql/bronze_ec2_metrics.sql', schema_name, monthly_budget)
+        metrics_dump_ec2(aws_access_key, aws_secret_key, aws_region, schema_name)
+        execute_sql_files(f'{base_path}/sql/silver_ec2_metrics.sql', schema_name, monthly_budget)
+        execute_sql_files(f'{base_path}/sql/gold_ec2_metrics.sql', schema_name, monthly_budget)
 
     except Exception as ex:
         print(f"An error occurred: {ex}")

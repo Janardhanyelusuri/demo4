@@ -119,7 +119,6 @@ export const AZURE_RESOURCES: CloudResourceMap[] = [
 export const AWS_RESOURCES: CloudResourceMap[] = [
     { displayName: "EC2", backendKey: "ec2" },
     { displayName: "S3", backendKey: "s3" },
-    { displayName: "VPC", backendKey: "vpc" },
 ];
 
 // Resource Type definitions for GCP
