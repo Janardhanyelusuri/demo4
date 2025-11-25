@@ -1,0 +1,258 @@
+{
+  "Account": "750573229682",
+  "Region": "us-west-1",
+  "Timestamp": "2025-11-25T14:55:01.736523",
+  "Resources": [
+    {
+      "Type": "Lambda",
+      "ID": "aiopschatbot",
+      "Name": "aiopschatbot",
+      "Details": {
+        "ARN": "arn:aws:lambda:us-west-1:750573229682:function:aiopschatbot",
+        "Runtime": "python3.13",
+        "Memory": 128,
+        "Timeout": 3
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "aditya-cloudmeter01",
+      "Name": "aditya-cloudmeter01",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2025-09-17 06:14:28+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "ajittestbucket",
+      "Name": "ajittestbucket",
+      "Details": {
+        "Region": "ap-northeast-1",
+        "Created": "2024-11-29 12:28:06+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "billing-bucket2024-06",
+      "Name": "billing-bucket2024-06",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-05 09:41:09+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-1-1721555962",
+      "Name": "cloud-meter-1-1721555962",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-21 09:59:27+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-19-1721736107",
+      "Name": "cloud-meter-19-1721736107",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-23 12:01:53+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-24-1721823382",
+      "Name": "cloud-meter-24-1721823382",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-24 12:16:29+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-254-1721486147",
+      "Name": "cloud-meter-254-1721486147",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-20 14:35:53+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-26-1735634499",
+      "Name": "cloud-meter-26-1735634499",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-12-31 08:41:41+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-443-1721739416",
+      "Name": "cloud-meter-443-1721739416",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-23 12:57:01+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-48-1721752768",
+      "Name": "cloud-meter-48-1721752768",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-23 16:39:33+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-49-1721804818",
+      "Name": "cloud-meter-49-1721804818",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-24 07:07:03+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-54-1721992486",
+      "Name": "cloud-meter-54-1721992486",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-26 11:14:51+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-544-1721824304",
+      "Name": "cloud-meter-544-1721824304",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-07-24 12:31:50+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-6-1724759089",
+      "Name": "cloud-meter-6-1724759089",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2024-08-27 11:44:58+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloud-meter-6-1762968048",
+      "Name": "cloud-meter-6-1762968048",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2025-11-12 17:20:57+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloudmeter-billing-report",
+      "Name": "cloudmeter-billing-report",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2023-03-10 11:02:48+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "cloudmeter1",
+      "Name": "cloudmeter1",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2023-02-23 07:44:54+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "compass-airlfow-test",
+      "Name": "compass-airlfow-test",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2023-08-18 13:37:01+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "compass-snowflake-demo",
+      "Name": "compass-snowflake-demo",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2023-08-25 08:38:11+00:00"
+      }
+    },
+    {
+      "Type": "S3",
+      "ID": "compass-stage-test",
+      "Name": "compass-stage-test",
+      "Details": {
+        "Region": "us-east-1",
+        "Created": "2023-08-23 08:14:16+00:00"
+      }
+    },
+    {
+      "Type": "VPC",
+      "ID": "vpc-0b421cfabcdf8a577",
+      "Name": "vpc-0b421cfabcdf8a577",
+      "Details": {
+        "CIDR": "10.0.0.0/16",
+        "State": "available",
+        "SubnetCount": 1,
+        "IsDefault": false
+      }
+    },
+    {
+      "Type": "VPC",
+      "ID": "vpc-003804efb9619fcd9",
+      "Name": "vpc-003804efb9619fcd9",
+      "Details": {
+        "CIDR": "10.0.0.0/16",
+        "State": "available",
+        "SubnetCount": 4,
+        "IsDefault": false
+      }
+    },
+    {
+      "Type": "VPC",
+      "ID": "vpc-02448e8b893c45edd",
+      "Name": "vpc-02448e8b893c45edd",
+      "Details": {
+        "CIDR": "10.0.0.0/16",
+        "State": "available",
+        "SubnetCount": 4,
+        "IsDefault": false
+      }
+    },
+    {
+      "Type": "VPC",
+      "ID": "vpc-0883ba3d3a9aa2f79",
+      "Name": "vpc-0883ba3d3a9aa2f79",
+      "Details": {
+        "CIDR": "172.31.0.0/16",
+        "State": "available",
+        "SubnetCount": 2,
+        "IsDefault": true
+      }
+    },
+    {
+      "Type": "VPC",
+      "ID": "vpc-02b424766d9780e67",
+      "Name": "vpc-02b424766d9780e67",
+      "Details": {
+        "CIDR": "10.0.0.0/16",
+        "State": "available",
+        "SubnetCount": 4,
+        "IsDefault": false
+      }
+    }
+  ],
+  "Summary": {
+    "Lambda": 1,
+    "S3": 20,
+    "VPC": 5
+  }
+}

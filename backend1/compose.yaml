@@ -1,0 +1,88 @@
+version: '3'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 8000:8000
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:18
+    restart: always
+    user: postgres
+    volumes:
+      - db-data:/var/lib/postgresql
+    environment:
+      - POSTGRES_DB=example
+      - POSTGRES_PASSWORD=asdasdasd
+    ports:
+      - 5432:5432
+    expose:
+      - 5432
+    healthcheck:
+      test: [ "CMD", "pg_isready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cubejs:
+    image: cubejs/cube:latest
+    env_file:
+      - .env
+    ports:
+      - 4000:4000
+    volumes:
+      - ./cubejs-schema:/cube/conf
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: celery -A app.worker.celery_worker worker --loglevel=info --logfile=./celery.log
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - server
+      - redis
+#      - db
+
+  beat:
+    build: .
+    command: celery -A app.worker.celery_worker beat --loglevel=info --logfile=./celery_beat.log
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - server
+      - redis  
+
+  redis:
+    image: redis:7
+    ports:
+      - 6379:6379
+
+  dashboard:
+    build: .
+    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    ports:
+      - 5556:5555
+    depends_on:
+      - server
+      - redis
+      - worker
+
+volumes:
+  db-data:
