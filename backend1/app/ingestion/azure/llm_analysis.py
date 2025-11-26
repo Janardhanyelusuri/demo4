@@ -132,23 +132,23 @@ METRICS:
 
 RULES:
 1. Use exact values+units from METRICS (e.g., "478.3 GB", "1,247 tx/day")
-2. State exact SKU/tier names+pricing (e.g., "Hot $0.0184/GB → Cool $0.01/GB")
-3. Show calculations (e.g., "478 GB × $0.0084 = $4.02/mo")
-4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended"
+2. State exact SKU/tier names (e.g., "Hot tier → Cool tier")
+3. Express savings as PERCENTAGES only (e.g., "Can reduce by 45%", "Increase efficiency by 30%")
+4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", any dollar amounts in recommendations
 5. Use action verbs: Move, Change, Configure, Enable, Disable, Purchase
 6. Every recommendation needs explanation with actual metrics showing WHY
-7. Always include units: GB, GB/mo, tx/day, %, $, $/mo, $/yr
+7. Always include units: GB, GB/mo, tx/day, %
 
 DECIDE: Primary optimization? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies (spikes/drops)?
 
 JSON (MUST: 2-3 additional_recommendation, 2-3 anomalies):
 {{
   "recommendations": {{
-    "effective_recommendation": {{"text": "[action with exact values+savings]", "explanation": "[why with metrics+math]", "saving_pct": #}},
+    "effective_recommendation": {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
     "additional_recommendation": [
-      {{"text": "[action with exact values+savings]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact values+savings]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact values+savings]", "explanation": "[why with metrics]", "saving_pct": #}}
+      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
+      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
+      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}}
     ],
     "base_of_recommendations": ["[metric: value units]", "[metric: value units]"]
   }},
@@ -180,21 +180,21 @@ METRICS:
 RULES:
 1. Use exact values+units from METRICS (e.g., "CPU: 12.3% avg, 35.7% max", "Memory: 8.2 GB")
 2. State exact SKU names+specs (e.g., "Standard_D4s_v3 (4 vCPU, 16 GB RAM) → Standard_B2s (2 vCPU, 4 GB RAM)")
-3. Show calculations (e.g., "$237.50/mo → $95.20/mo = Save $142.30/mo")
-4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", "smaller instance"
+3. Express savings as PERCENTAGES only (e.g., "Can reduce by 60%", "Save 40% with reservation")
+4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", "smaller instance", any dollar amounts in recommendations
 5. Use action verbs: Downsize, Upsize, Purchase, Enable, Disable, Change, Configure, Migrate
 6. Every recommendation needs explanation with actual metrics showing WHY
-7. Always include units: %, GB, vCPU, $, %/mo, %/yr, IOPS, ops/sec
+7. Always include units: %, GB, vCPU, IOPS, ops/sec
 
 DECIDE: Primary optimization (downsize/upsize/RI/auto-shutdown/disk/other)? VM size change (to what SKU, why)? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies?
 
 JSON (MUST: 2-3 additional_recommendation,  must include units for values of all 2-3 anomalies metrics):
 {{
   "recommendations": {{
-    "effective_recommendation": {{"text": "[action with exact SKU specs+savings]", "explanation": "[why with metrics+math]", "saving_pct": #}},
+    "effective_recommendation": {{"text": "[action with exact SKU specs]", "explanation": "[why with metrics]", "saving_pct": #}},
     "additional_recommendation": [
-      {{"text": "[action with exact details+savings]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact details+savings]", "explanation": "[why with metrics]", "saving_pct": #}},    ],
+      {{"text": "[action with exact details]", "explanation": "[why with metrics]", "saving_pct": #}},
+      {{"text": "[action with exact details]", "explanation": "[why with metrics]", "saving_pct": #}},    ],
     "base_of_recommendations": ["[metric: value units]", "[metric: value units]"]
   }},
   "cost_forecasting": {{"monthly": {monthly_forecast:.2f}, "annually": {annual_forecast:.2f}}},
@@ -331,11 +331,11 @@ METRICS: {json.dumps(formatted_metrics, indent=2)}
 
 RULES:
 1. Use exact values+units from METRICS (e.g., "Packets: 1,234,567", "Bytes: 4.5 GB avg")
-2. State exact SKU/tier specs and pricing
-3. Show calculations (e.g., "Static IP ($3.65/mo) vs Dynamic ($0) = $43.80/yr saving")
-4. BANNED PHRASES: "consider", "review", "optimize", "could", "might"
+2. State exact SKU/tier specs (e.g., "Basic → Standard", "Static → Dynamic")
+3. Express savings as PERCENTAGES only (e.g., "Can reduce by 100%", "Save 30% with reservation")
+4. BANNED PHRASES: "consider", "review", "optimize", "could", "might", any dollar amounts in recommendations
 5. Use action verbs: "Switch to Dynamic IP", "Reserve Static IP", "Enable DDoS Protection"
-6. Always include units: packets, bytes, %, $, Mbps
+6. Always include units: packets, bytes, %, Mbps
 
 DECIDE:
 - Primary optimization? (Reserved vs Dynamic, delete unused, DDoS protection)
@@ -346,18 +346,18 @@ JSON SCHEMA (MUST follow exactly):
   "recommendations": {{
     "effective_recommendation": {{
       "text": "Switch from Static to Dynamic IP allocation",
-      "explanation": "PacketCount avg 0 packets/day for 30 days, IP unused. Static IP costs $3.65/mo",
+      "explanation": "PacketCount avg 0 packets/day for 30 days, IP unused. Can reduce by 100%",
       "saving_pct": 100
     }},
     "additional_recommendation": [
       {{
         "text": "Reserve Static IP with commitment for active IPs",
-        "explanation": "ByteCount avg 4.5 GB/day shows active use. 1-year reservation saves 30%",
+        "explanation": "ByteCount avg 4.5 GB/day shows active use. 1-year reservation reduces by 30%",
         "saving_pct": 30
       }},
       {{
         "text": "Enable DDoS Protection Standard for high-traffic IPs",
-        "explanation": "ByteCount 100+ GB/day warrants DDoS protection ($2,944/mo includes first 100 IPs)",
+        "explanation": "ByteCount 100+ GB/day warrants DDoS protection for security",
         "saving_pct": 0
       }}
     ],
@@ -365,7 +365,7 @@ JSON SCHEMA (MUST follow exactly):
       "PacketCount: X avg, Y max",
       "ByteCount: X GB avg, Y GB max",
       "VipAvailability: X%",
-      "Current cost: $X/month ({allocation_method})"
+      "Allocation method: {allocation_method}"
     ]
   }},
   "cost_forecasting": {{
@@ -395,7 +395,7 @@ CRITICAL:
 - Include 2-3 items in additional_recommendation array
 - Include 2-3 items in anomalies array (or empty if none)
 - Use exact metric values from METRICS section
-- Reference specific cost numbers and calculations
+- Express all savings as percentages only
 """
 
 

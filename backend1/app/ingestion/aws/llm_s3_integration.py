@@ -145,6 +145,147 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
         raise RuntimeError(f"An unexpected error occurred during DB fetch: {e}") from e
 
 
+def generate_s3_prompt(bucket_data: dict) -> str:
+    """
+    Generate LLM prompt for S3 bucket optimization recommendations.
+
+    Args:
+        bucket_data: Dictionary containing bucket metrics and cost data
+
+    Returns:
+        Formatted prompt string for the LLM
+    """
+    bucket_name = bucket_data.get('bucket_name', 'Unknown')
+    region = bucket_data.get('region', 'Unknown')
+    account_id = bucket_data.get('account_id', 'Unknown')
+    billed_cost = bucket_data.get('billed_cost', 0)
+
+    # Extract common S3 metrics
+    bucket_size_avg = bucket_data.get('metric_BucketSizeBytes_Avg', 0)
+    bucket_size_max = bucket_data.get('metric_BucketSizeBytes_Max', 0)
+    bucket_size_max_date = bucket_data.get('metric_BucketSizeBytes_MaxDate', 'N/A')
+
+    object_count_avg = bucket_data.get('metric_NumberOfObjects_Avg', 0)
+    object_count_max = bucket_data.get('metric_NumberOfObjects_Max', 0)
+
+    start_date = bucket_data.get('start_date', 'N/A')
+    end_date = bucket_data.get('end_date', 'N/A')
+    duration_days = bucket_data.get('duration_days', 0)
+
+    # Convert bytes to GB for readability
+    size_avg_gb = bucket_size_avg / (1024**3) if bucket_size_avg else 0
+    size_max_gb = bucket_size_max / (1024**3) if bucket_size_max else 0
+
+    prompt = f"""
+You are a cloud cost optimization expert for AWS. Analyze the following S3 bucket and provide optimization recommendations in strict JSON format.
+
+**S3 Bucket Details:**
+- Bucket Name: {bucket_name}
+- Region: {region}
+- Account ID: {account_id}
+- Analysis Period: {start_date} to {end_date} ({duration_days} days)
+- Total Billed Cost: ${billed_cost:.2f}
+
+**Storage Metrics:**
+- Bucket Size: Avg {size_avg_gb:.2f} GB, Max {size_max_gb:.2f} GB (on {bucket_size_max_date})
+- Object Count: Avg {object_count_avg:.0f}, Max {object_count_max:.0f}
+
+**Your Task:**
+Based on the storage metrics above, provide cost optimization recommendations. Consider:
+1. Should objects be moved to cheaper storage classes (Intelligent-Tiering, Glacier, Deep Archive)?
+2. Are there lifecycle policies that could reduce costs?
+3. Is versioning causing unnecessary storage costs?
+4. Any anomalies in storage growth patterns?
+
+**RULES:**
+- Express ALL savings as PERCENTAGES only (e.g., "Can reduce by 30%", "Save 75% with Glacier")
+- State exact storage class names (e.g., "S3 Standard → S3 Glacier Flexible Retrieval")
+- BANNED: "consider", "review", "optimize", "significant", "could", "should", any dollar amounts in recommendations
+- Use action verbs: Move, Implement, Enable, Configure, Delete
+
+**Response Format (JSON only):**
+{{
+  "recommendations": {{
+    "effective_recommendation": {{
+      "text": "Primary recommendation with exact storage class specs",
+      "saving_pct": <percentage as number>
+    }},
+    "additional_recommendation": [
+      {{
+        "text": "Secondary recommendation with specifics",
+        "saving_pct": <percentage as number>
+      }}
+    ],
+    "base_of_recommendations": [
+      "Bucket size: {size_avg_gb:.2f} GB avg, {size_max_gb:.2f} GB max",
+      "Object count: {object_count_avg:.0f} avg",
+      "Reasoning based on metrics"
+    ]
+  }},
+  "cost_forecasting": {{
+    "monthly": <projected monthly cost as number>,
+    "annually": <projected annual cost as number>
+  }},
+  "anomalies": [
+    {{
+      "metric_name": "BucketSizeBytes",
+      "timestamp": "YYYY-MM-DD",
+      "value": <anomaly value>,
+      "reason_short": "Brief explanation"
+    }}
+  ],
+  "contract_deal": {{
+    "assessment": "good|bad|unknown",
+    "for sku": "S3 Standard",
+    "reason": "Explanation of storage class assessment",
+    "monthly_saving_pct": <percentage as number>,
+    "annual_saving_pct": <percentage as number>
+  }}
+}}
+
+Return ONLY the JSON object, no additional text.
+"""
+    return prompt
+
+
+def get_s3_recommendation_single(bucket_data: dict) -> dict:
+    """
+    Get LLM recommendation for a single S3 bucket.
+
+    Args:
+        bucket_data: Dictionary containing bucket metrics
+
+    Returns:
+        Dictionary containing recommendations or None if error
+    """
+    try:
+        prompt = generate_s3_prompt(bucket_data)
+        llm_response = llm_call(prompt)
+
+        if not llm_response:
+            LOG.warning(f"Empty LLM response for bucket {bucket_data.get('bucket_name')}")
+            return None
+
+        # Try to parse as JSON directly
+        try:
+            # Remove markdown code blocks if present
+            if '```json' in llm_response:
+                llm_response = llm_response.split('```json')[1].split('```')[0].strip()
+            elif '```' in llm_response:
+                llm_response = llm_response.split('```')[1].split('```')[0].strip()
+
+            recommendation = json.loads(llm_response)
+            recommendation['resource_id'] = bucket_data.get('bucket_name', 'Unknown')
+            return recommendation
+        except json.JSONDecodeError:
+            LOG.warning(f"Failed to parse JSON for bucket {bucket_data.get('bucket_name')}")
+            return None
+
+    except Exception as e:
+        LOG.error(f"Error getting S3 recommendation: {e}")
+        return None
+
+
 # --- run_llm_analysis_s3 (No change needed here, it uses the fetch function) ---
 
 def run_llm_analysis_s3(schema_name, start_date=None, end_date=None, bucket_name=None):
@@ -179,20 +320,19 @@ def run_llm_analysis_s3(schema_name, start_date=None, end_date=None, bucket_name
     df["duration_days"] = (pd.to_datetime(end_str) - pd.to_datetime(start_str)).days
 
     # Convert to list-of-dicts for LLM helper
-    data = df.to_dict(orient="records")
-    
-    LOG.info("🤖 Calling LLM for recommendations...")
-    try:
-        # NOTE: You need a proper _generate_s3_prompt function and llm_call wrapper 
-        # to correctly pass and use the new AVG/MAX/MaxDate metrics here.
-        recommendations = llm_call(data) 
-    except Exception as e:
-        LOG.error(f"❌ LLM call failed: {e}")
-        recommendations = []
+    buckets = df.to_dict(orient="records")
+
+    LOG.info("🤖 Calling LLM for S3 recommendations...")
+    recommendations = []
+
+    for bucket_data in buckets:
+        rec = get_s3_recommendation_single(bucket_data)
+        if rec:
+            recommendations.append(rec)
 
     if recommendations:
-        # Assuming dump_to_postgresql is called here in your actual implementation
-        print("✅ LLM analysis complete!")
+        LOG.info(f"✅ S3 analysis complete! Generated {len(recommendations)} recommendation(s).")
         return recommendations
     else:
-        print("⚠️ No recommendations generated by LLM.")
+        LOG.warning("⚠️ No recommendations generated by LLM.")
+        return []

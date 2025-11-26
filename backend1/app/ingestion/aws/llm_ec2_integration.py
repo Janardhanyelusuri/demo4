@@ -228,22 +228,29 @@ Based on the utilization metrics above, provide cost optimization recommendation
 3. Are there scheduling opportunities (e.g., stop during non-business hours)?
 4. Any performance anomalies that indicate inefficient usage?
 
+**RULES:**
+- Express ALL savings as PERCENTAGES only (e.g., "Can reduce by 40%", "Save 65% with Spot")
+- State exact instance type specs (e.g., "t3.large (2 vCPU, 8 GB RAM) → t3.medium (2 vCPU, 4 GB RAM)")
+- BANNED: "consider", "review", "optimize", "significant", "could", "should", any dollar amounts in recommendations
+- Use action verbs: Downsize, Upsize, Switch, Enable, Configure, Purchase
+
 **Response Format (JSON only):**
 {{
   "recommendations": {{
     "effective_recommendation": {{
-      "text": "Primary recommendation (e.g., 'Downsize from t3.large to t3.medium')",
+      "text": "Primary recommendation with exact instance type specs",
       "saving_pct": <percentage as number>
     }},
     "additional_recommendation": [
       {{
-        "text": "Secondary recommendation",
+        "text": "Secondary recommendation with specifics",
         "saving_pct": <percentage as number>
       }}
     ],
     "base_of_recommendations": [
-      "Reasoning point 1",
-      "Reasoning point 2"
+      "CPU: X% avg, Y% max",
+      "Network: X bytes avg",
+      "Reasoning based on metrics"
     ]
   }},
   "cost_forecasting": {{
