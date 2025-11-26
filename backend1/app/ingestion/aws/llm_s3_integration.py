@@ -37,7 +37,7 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
     # Use parameterized query components
     bucket_filter_sql = sql.SQL("AND bm.bucket_name = %s") if bucket_name else sql.SQL("")
 
-    # NOTE: The query now uses two CTEs to first calculate aggregates and then map them to JSON.
+    # NOTE: The query now uses three CTEs to properly calculate aggregates and max date
     QUERY = sql.SQL("""
         WITH metric_agg AS (
             SELECT
@@ -52,24 +52,30 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
                 bm.event_date BETWEEN %s AND %s
                 {bucket_filter}
         ),
-        
+
+        max_date_lookup AS (
+            SELECT DISTINCT ON (bucket_name, metric_name)
+                bucket_name,
+                metric_name,
+                event_date AS max_date
+            FROM metric_agg
+            ORDER BY bucket_name, metric_name, metric_value DESC, event_date DESC
+        ),
+
         usage_summary AS (
             SELECT
-                bucket_name,
-                account_id,
-                region,
-                metric_name,
-                AVG(metric_value) AS avg_value,
-                MAX(metric_value) AS max_value,
-                
-                -- NEW: Use FIRST_VALUE to get the date corresponding to the maximum value
-                FIRST_VALUE(event_date) OVER (
-                    PARTITION BY bucket_name, metric_name
-                    ORDER BY metric_value DESC, event_date DESC
-                ) AS max_date
-                
-            FROM metric_agg
-            GROUP BY bucket_name, account_id, region, metric_name
+                m.bucket_name,
+                m.account_id,
+                m.region,
+                m.metric_name,
+                AVG(m.metric_value) AS avg_value,
+                MAX(m.metric_value) AS max_value,
+                MAX(md.max_date) AS max_date
+            FROM metric_agg m
+            LEFT JOIN max_date_lookup md
+                ON md.bucket_name = m.bucket_name
+                AND md.metric_name = m.metric_name
+            GROUP BY m.bucket_name, m.account_id, m.region, m.metric_name
         ),
         
         metric_map AS (
