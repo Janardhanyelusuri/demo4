@@ -88,51 +88,127 @@ async def _resolve_schema_name(project_id: Optional[Union[int, str]], schema_nam
 
 
 # ---------------------------------------------------------
-# AWS Endpoint
+# AWS Endpoint (WITH CACHING)
 # ---------------------------------------------------------
 @router.post("/aws/{project_id}", response_model=LLMResponse, status_code=200)
 async def llm_aws(
     project_id: str,
     payload: LLMRequest,
+    response: Response,
 ):
     schema = await _resolve_schema_name(project_id, payload.schema_name)
 
-    # Route based on resource type
-    resource_type_lower = payload.resource_type.lower().strip()
+    # Convert datetime to date for hashing
+    start_dt = payload.start_date.date() if payload.start_date else None
+    end_dt = payload.end_date.date() if payload.end_date else None
 
-    if resource_type_lower == 's3':
-        result = run_llm_analysis_s3(
-            resource_type=payload.resource_type,
-            schema_name=schema,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            resource_id=payload.resource_id
-        )
-    elif resource_type_lower == 'ec2':
-        result = run_llm_analysis_ec2(
-            resource_type=payload.resource_type,
-            schema_name=schema,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            resource_id=payload.resource_id
-        )
+    # Generate hash key for caching
+    hash_key = generate_cache_hash_key(
+        cloud_platform="aws",
+        schema_name=schema,
+        resource_type=payload.resource_type,
+        start_date=start_dt,
+        end_date=end_dt,
+        resource_id=payload.resource_id
+    )
+
+    print(f"🔑 Generated cache hash_key: {hash_key[:16]}...")
+
+    # Check cache first
+    cached_result = await get_cached_result(hash_key)
+    task_id = None
+
+    if cached_result:
+        # Return cached result
+        print(f"📦 Returning cached result for AWS {payload.resource_type}")
+        result_list = cached_result
     else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported AWS resource type: {payload.resource_type}. Supported types: s3, ec2"
+        # Cache miss - create task and call LLM
+        task_id = task_manager.create_task(
+            task_type="llm_analysis",
+            metadata={
+                "cloud": "aws",
+                "project_id": project_id,
+                "resource_type": payload.resource_type,
+                "schema": schema,
+                "resource_id": payload.resource_id
+            }
         )
+
+        # Set task_id in response header immediately so frontend can cancel even if request is aborted
+        response.headers["X-Task-ID"] = task_id
+
+        print(f"🔄 Cache miss - calling LLM for AWS {payload.resource_type} (task: {task_id})")
+
+        try:
+            # Route based on resource type
+            resource_type_lower = payload.resource_type.lower().strip()
+
+            if resource_type_lower == 's3':
+                result = run_llm_analysis_s3(
+                    resource_type=payload.resource_type,
+                    schema_name=schema,
+                    start_date=payload.start_date,
+                    end_date=payload.end_date,
+                    resource_id=payload.resource_id
+                )
+            elif resource_type_lower == 'ec2':
+                result = run_llm_analysis_ec2(
+                    resource_type=payload.resource_type,
+                    schema_name=schema,
+                    start_date=payload.start_date,
+                    end_date=payload.end_date,
+                    resource_id=payload.resource_id
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported AWS resource type: {payload.resource_type}. Supported types: s3, ec2"
+                )
+
+            # Convert single dict result to list for consistent frontend handling
+            if result is not None:
+                result_list = [result] if isinstance(result, dict) else result
+                print(f'Final response_list: {len(result_list)} resources processed')
+            else:
+                result_list = []
+
+            # Save to cache (async) - but only if task was NOT cancelled
+            if result_list and not task_manager.is_cancelled(task_id):
+                await save_to_cache(
+                    hash_key=hash_key,
+                    cloud_platform="aws",
+                    schema_name=schema,
+                    resource_type=payload.resource_type,
+                    start_date=start_dt,
+                    end_date=end_dt,
+                    resource_id=payload.resource_id,
+                    output_json=result_list
+                )
+            elif task_manager.is_cancelled(task_id):
+                print(f"🚫 NOT saving to cache - task {task_id[:8]}... was cancelled")
+
+            # Mark task as complete
+            task_manager.complete_task(task_id)
+
+        except Exception as e:
+            # Mark task as complete even on error
+            if task_id:
+                task_manager.complete_task(task_id)
+            raise
 
     return LLMResponse(
         status="success",
         cloud="aws",
-        schema_name= schema,
+        schema_name=schema,
         resource_type=payload.resource_type,
         start_date=payload.start_date,
         end_date=payload.end_date,
         resource_id=payload.resource_id,
-        recommendations=json.dumps(result) if isinstance(result, list) else None,
+        recommendations=json.dumps(result_list) if result_list else None,
         details=None,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.utcnow(),
+        task_id=task_id
     )
 
 
