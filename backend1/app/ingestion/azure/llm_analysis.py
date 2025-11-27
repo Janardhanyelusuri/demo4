@@ -412,7 +412,12 @@ def get_public_ip_recommendation_single(resource_data: Dict[str, Any]) -> Option
     start_date = resource_data.get("start_date", "N/A")
     end_date = resource_data.get("end_date", "N/A")
     resource_id = resource_data.get('resource_id', 'Unknown')
-    
+
+    # Check if metrics data exists
+    has_metrics = any(k.startswith("metric_") for k in resource_data.keys())
+    if not has_metrics:
+        logging.warning(f"Public IP {resource_id} has no metrics data - analysis may be limited")
+
     forecast = _extrapolate_costs(billed_cost, duration_days)
     prompt = _generate_public_ip_prompt(resource_data, start_date, end_date, forecast['monthly'], forecast['annually'])
     
