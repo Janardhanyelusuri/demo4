@@ -397,6 +397,15 @@ async def get_resource_ids(
                     ORDER BY storage_account_name
                     LIMIT 100;
                 """
+            elif res_type in ["publicip", "public_ip", "pip"]:
+                # Fetch Public IP resource IDs from Azure
+                query = f"""
+                    SELECT DISTINCT LOWER(resource_id) as resource_id, public_ip_name as resource_name
+                    FROM {schema_name}.dim_public_ip
+                    WHERE resource_id IS NOT NULL
+                    ORDER BY public_ip_name
+                    LIMIT 100;
+                """
         elif cloud == "aws":
             if res_type in ["ec2", "instance"]:
                 # Fetch EC2 instance IDs from AWS
