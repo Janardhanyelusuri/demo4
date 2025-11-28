@@ -407,23 +407,23 @@ async def get_resource_ids(
                 """
         elif cloud == "aws":
             if res_type in ["ec2", "instance"]:
-                # Fetch EC2 instance IDs from AWS
+                # Fetch EC2 instance IDs from AWS dimension table
                 query = f"""
-                    SELECT DISTINCT resource_id, resource_id as resource_name
-                    FROM {schema_name}.gold_aws_resource_dim
-                    WHERE service_code = 'AmazonEC2'
-                      AND resource_id IS NOT NULL
-                    ORDER BY resource_id
+                    SELECT DISTINCT instance_id as resource_id,
+                           COALESCE(instance_name, instance_id) as resource_name
+                    FROM {schema_name}.dim_ec2_instance
+                    WHERE instance_id IS NOT NULL
+                    ORDER BY instance_name, instance_id
                     LIMIT 100;
                 """
             elif res_type in ["s3", "bucket"]:
-                # Fetch S3 bucket resource IDs from AWS
+                # Fetch S3 bucket names from AWS dimension table
                 query = f"""
-                    SELECT DISTINCT resource_id, resource_id as resource_name
-                    FROM {schema_name}.gold_aws_resource_dim
-                    WHERE service_code = 'AmazonS3'
-                      AND resource_id IS NOT NULL
-                    ORDER BY resource_id
+                    SELECT DISTINCT bucket_name as resource_id,
+                           bucket_name as resource_name
+                    FROM {schema_name}.dim_s3_bucket
+                    WHERE bucket_name IS NOT NULL
+                    ORDER BY bucket_name
                     LIMIT 100;
                 """
 
