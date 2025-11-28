@@ -135,9 +135,11 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
         bucket_filter=bucket_filter_sql
     )
 
-    params = [start_date, end_date, end_date, start_date]
+    # Build params in the correct order to match the SQL placeholders
+    params = [start_date, end_date]
     if bucket_name:
-        params.append(bucket_name) # Add bucket name parameter (no lower() here as it's done in SQL)
+        params.append(bucket_name)  # Bucket filter comes after BETWEEN clause
+    params.extend([end_date, start_date])  # For charge_period_start/end filters
 
     try:
         cursor = conn.cursor()
