@@ -43,11 +43,13 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
             SELECT
                 bm.bucket_name,
                 bm.account_id,
-                bm.region,
+                db.region,
                 bm.metric_name,
                 bm.value AS metric_value,
                 bm.event_date
             FROM {schema_name}.fact_s3_metrics bm
+            LEFT JOIN {schema_name}.dim_s3_bucket db
+                ON bm.bucket_name = db.bucket_name
             WHERE
                 bm.event_date BETWEEN %s AND %s
                 {bucket_filter}
