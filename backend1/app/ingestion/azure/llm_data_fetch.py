@@ -135,13 +135,26 @@ def fetch_vm_utilization_data(conn, schema_name, start_date, end_date, resource_
             {metrics_cte_filter_sql}
         ),
 
-        -- NEW CTE 1: Calculate AVG and MAX metric values
+        -- NEW CTE 1: Calculate AVG and MAX metric values (with byte-to-GB conversion)
         metric_avg_max AS (
             SELECT
                 resource_id,
                 metric_name,
-                AVG(metric_value) AS avg_value,
-                MAX(metric_value) AS max_value
+                -- Convert bytes to GB for memory and network metrics
+                AVG(
+                    CASE
+                        WHEN metric_name IN ('Available Memory Bytes', 'Network In', 'Network Out', 'Network In Total', 'Network Out Total')
+                        THEN metric_value / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE metric_value
+                    END
+                ) AS avg_value,
+                MAX(
+                    CASE
+                        WHEN metric_name IN ('Available Memory Bytes', 'Network In', 'Network Out', 'Network In Total', 'Network Out Total')
+                        THEN metric_value / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE metric_value
+                    END
+                ) AS max_value
             FROM metric_pivot
             GROUP BY resource_id, metric_name
         ),
@@ -393,8 +406,21 @@ def fetch_storage_account_utilization_data(
         SELECT
             resource_id,
             metric_name,
-            AVG(daily_value_avg) AS avg_value,
-            MAX(daily_value_max) AS max_value
+            -- Convert bytes to GB for Ingress and Egress metrics
+            AVG(
+                CASE
+                    WHEN metric_name IN ('Ingress', 'Egress')
+                    THEN daily_value_avg / 1073741824.0  -- Convert bytes to GB (1024^3)
+                    ELSE daily_value_avg
+                END
+            ) AS avg_value,
+            MAX(
+                CASE
+                    WHEN metric_name IN ('Ingress', 'Egress')
+                    THEN daily_value_max / 1073741824.0  -- Convert bytes to GB (1024^3)
+                    ELSE daily_value_max
+                END
+            ) AS max_value
         FROM fact_base
         GROUP BY resource_id, metric_name
     ),
@@ -814,8 +840,21 @@ def fetch_public_ip_utilization_data(
             SELECT
                 resource_id,
                 metric_name,
-                AVG(daily_value_avg) AS avg_value,
-                MAX(daily_value_max) AS max_value
+                -- Convert bytes to GB for ByteCount and DDoS byte metrics
+                AVG(
+                    CASE
+                        WHEN metric_name IN ('ByteCount', 'TCPBytesForwardedDDoS', 'TCPBytesInDDoS', 'UDPBytesForwardedDDoS', 'UDPBytesInDDoS')
+                        THEN daily_value_avg / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE daily_value_avg
+                    END
+                ) AS avg_value,
+                MAX(
+                    CASE
+                        WHEN metric_name IN ('ByteCount', 'TCPBytesForwardedDDoS', 'TCPBytesInDDoS', 'UDPBytesForwardedDDoS', 'UDPBytesInDDoS')
+                        THEN daily_value_max / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE daily_value_max
+                    END
+                ) AS max_value
             FROM fact_base
             GROUP BY resource_id, metric_name
         ),

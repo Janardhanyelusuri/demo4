@@ -146,11 +146,10 @@ async def llm_aws(
 
             if resource_type_lower == 's3':
                 result = run_llm_analysis_s3(
-                    resource_type=payload.resource_type,
                     schema_name=schema,
                     start_date=payload.start_date,
                     end_date=payload.end_date,
-                    resource_id=payload.resource_id
+                    bucket_name=payload.resource_id
                 )
             elif resource_type_lower == 'ec2':
                 result = run_llm_analysis_ec2(
