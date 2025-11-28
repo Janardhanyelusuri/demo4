@@ -68,8 +68,21 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
                 m.account_id,
                 m.region,
                 m.metric_name,
-                AVG(m.metric_value) AS avg_value,
-                MAX(m.metric_value) AS max_value,
+                -- Convert bytes to GB for BucketSizeBytes metric
+                AVG(
+                    CASE
+                        WHEN m.metric_name = 'BucketSizeBytes'
+                        THEN m.metric_value / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE m.metric_value
+                    END
+                ) AS avg_value,
+                MAX(
+                    CASE
+                        WHEN m.metric_name = 'BucketSizeBytes'
+                        THEN m.metric_value / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE m.metric_value
+                    END
+                ) AS max_value,
                 MAX(md.max_date) AS max_date
             FROM metric_agg m
             LEFT JOIN max_date_lookup md

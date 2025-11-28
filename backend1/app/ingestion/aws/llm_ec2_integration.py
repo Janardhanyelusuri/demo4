@@ -78,8 +78,21 @@ def fetch_ec2_utilization_data(conn, schema_name, start_date, end_date, instance
                 region,
                 account_id,
                 metric_name,
-                AVG(metric_value) AS avg_value,
-                MAX(metric_value) AS max_value,
+                -- Convert bytes to GB for disk and network metrics
+                AVG(
+                    CASE
+                        WHEN metric_name IN ('DiskReadBytes', 'DiskWriteBytes', 'NetworkIn', 'NetworkOut')
+                        THEN metric_value / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE metric_value
+                    END
+                ) AS avg_value,
+                MAX(
+                    CASE
+                        WHEN metric_name IN ('DiskReadBytes', 'DiskWriteBytes', 'NetworkIn', 'NetworkOut')
+                        THEN metric_value / 1073741824.0  -- Convert bytes to GB (1024^3)
+                        ELSE metric_value
+                    END
+                ) AS max_value,
 
                 -- Get the timestamp when max value occurred
                 FIRST_VALUE(timestamp) OVER (
