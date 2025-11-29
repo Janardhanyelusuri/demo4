@@ -117,7 +117,7 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
             us.bucket_name,
             us.account_id,
             us.region,
-            m.metrics_json,
+            MAX(m.metrics_json) AS metrics_json,  -- Use MAX() since metrics_json is already aggregated per bucket
             -- Pull cost fields from the focus table (assuming one cost record per bucket/period)
             MAX(ff.pricing_category) AS pricing_category,
             MAX(ff.pricing_unit) AS pricing_unit,
@@ -129,10 +129,10 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
         LEFT JOIN metric_map m ON m.bucket_name = us.bucket_name
         LEFT JOIN {schema_name}.gold_aws_fact_focus ff
             -- Join cost on resource_id = bucket_name
-            ON ff.resource_id = us.bucket_name 
-               AND ff.charge_period_start::date <= %s 
+            ON ff.resource_id = us.bucket_name
+               AND ff.charge_period_start::date <= %s
                AND ff.charge_period_end::date >= %s
-        GROUP BY 1, 2, 3, 4 -- Group by non-aggregated fields, including the resulting JSON column
+        GROUP BY 1, 2, 3 -- Group by bucket_name, account_id, region only
     """).format(
         schema_name=sql.Identifier(schema_name),
         bucket_filter=bucket_filter_sql
