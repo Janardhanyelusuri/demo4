@@ -171,6 +171,47 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
         raise RuntimeError(f"An unexpected error occurred during DB fetch: {e}") from e
 
 
+def _format_s3_metrics_for_llm(bucket_data: dict) -> dict:
+    """
+    Format S3 metrics for LLM with proper units.
+    Similar to Azure's metric formatting approach.
+    """
+    # Metrics that should be renamed to show GB units
+    METRIC_DISPLAY_NAMES = {
+        "BucketSizeBytes": "Bucket Size (GB)",
+        "NumberOfObjects": "Number of Objects",
+        "AllRequests": "All Requests",
+        "GetRequests": "GET Requests",
+        "PutRequests": "PUT Requests",
+        "4xxErrors": "4xx Errors",
+        "5xxErrors": "5xx Errors"
+    }
+
+    formatted_metrics = {}
+
+    # Find all metric keys in the data
+    for key in bucket_data.keys():
+        if key.startswith('metric_') and key.endswith('_Avg'):
+            # Extract metric name (e.g., "BucketSizeBytes" from "metric_BucketSizeBytes_Avg")
+            metric_name = key.replace('metric_', '').replace('_Avg', '')
+
+            # Get display name with units
+            display_name = METRIC_DISPLAY_NAMES.get(metric_name, metric_name)
+
+            # Build metric entry
+            entry = {
+                "Avg": bucket_data.get(f'metric_{metric_name}_Avg'),
+                "Max": bucket_data.get(f'metric_{metric_name}_Max'),
+                "MaxDate": bucket_data.get(f'metric_{metric_name}_MaxDate')
+            }
+
+            # Only include if at least one value is present
+            if any(v is not None for v in entry.values()):
+                formatted_metrics[display_name] = entry
+
+    return formatted_metrics
+
+
 def generate_s3_prompt(bucket_data: dict) -> str:
     """
     Generate LLM prompt for S3 bucket optimization recommendations.
@@ -186,86 +227,50 @@ def generate_s3_prompt(bucket_data: dict) -> str:
     account_id = bucket_data.get('account_id', 'Unknown')
     billed_cost = bucket_data.get('billed_cost', 0)
 
-    # Extract common S3 metrics (already converted to GB in SQL query)
-    bucket_size_avg = bucket_data.get('metric_BucketSizeBytes_Avg', 0)
-    bucket_size_max = bucket_data.get('metric_BucketSizeBytes_Max', 0)
-    bucket_size_max_date = bucket_data.get('metric_BucketSizeBytes_MaxDate', 'N/A')
-
-    object_count_avg = bucket_data.get('metric_NumberOfObjects_Avg', 0)
-    object_count_max = bucket_data.get('metric_NumberOfObjects_Max', 0)
-
     start_date = bucket_data.get('start_date', 'N/A')
     end_date = bucket_data.get('end_date', 'N/A')
     duration_days = bucket_data.get('duration_days', 0)
 
-    prompt = f"""
-You are a cloud cost optimization expert for AWS. Analyze the following S3 bucket and provide optimization recommendations in strict JSON format.
+    # Format metrics with proper units
+    formatted_metrics = _format_s3_metrics_for_llm(bucket_data)
 
-**S3 Bucket Details:**
-- Bucket Name: {bucket_name}
-- Region: {region}
-- Account ID: {account_id}
-- Analysis Period: {start_date} to {end_date} ({duration_days} days)
-- Total Billed Cost: ${billed_cost:.2f}
+    prompt = f"""AWS S3 FinOps. Analyze metrics, output JSON only.
 
-**Storage Metrics:**
-- Bucket Size: Avg {bucket_size_avg:.2f} GB, Max {bucket_size_max:.2f} GB (on {bucket_size_max_date})
-- Object Count: Avg {object_count_avg:.0f}, Max {object_count_max:.0f}
+CONTEXT: {bucket_name} | Region: {region} | {start_date} to {end_date} ({duration_days}d) | Cost: ${billed_cost:.2f}
 
-**Your Task:**
-Based on the storage metrics above, provide cost optimization recommendations. Consider:
-1. Should objects be moved to cheaper storage classes (Intelligent-Tiering, Glacier, Deep Archive)?
-2. Are there lifecycle policies that could reduce costs?
-3. Is versioning causing unnecessary storage costs?
-4. Any anomalies in storage growth patterns?
+METRICS:
+{json.dumps(formatted_metrics, indent=2)}
 
-**RULES:**
-- Express ALL savings as PERCENTAGES only (e.g., "Can reduce by 30%", "Save 75% with Glacier")
-- State exact storage class names (e.g., "S3 Standard → S3 Glacier Flexible Retrieval")
-- BANNED: "consider", "review", "optimize", "significant", "could", "should", any dollar amounts in recommendations
-- Use action verbs: Move, Implement, Enable, Configure, Delete
+RULES:
+1. Use exact values+units from METRICS (e.g., "512.5 GB", "1,247 requests")
+2. State exact storage class names (e.g., "S3 Standard → S3 Glacier Flexible Retrieval")
+3. Express savings as PERCENTAGES only (e.g., "Can reduce by 40%", "Save 75% with Glacier")
+4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", any dollar amounts in recommendations
+5. Use action verbs: Move, Implement, Enable, Configure, Delete, Remove
+6. Every recommendation needs explanation with actual metrics showing WHY
+7. Always include units: GB, requests, objects, %
 
-**Response Format (JSON only):**
+DECIDE: Primary optimization (storage class/lifecycle/versioning)? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies (spikes/drops)?
+
+JSON (MUST: 2-3 additional_recommendation, 2-3 anomalies):
 {{
   "recommendations": {{
-    "effective_recommendation": {{
-      "text": "Primary recommendation with exact storage class specs",
-      "saving_pct": <percentage as number>
-    }},
+    "effective_recommendation": {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
     "additional_recommendation": [
-      {{
-        "text": "Secondary recommendation with specifics",
-        "saving_pct": <percentage as number>
-      }}
+      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
+      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
+      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}}
     ],
-    "base_of_recommendations": [
-      "Bucket size: {bucket_size_avg:.2f} GB avg, {bucket_size_max:.2f} GB max",
-      "Object count: {object_count_avg:.0f} avg",
-      "Reasoning based on metrics"
-    ]
+    "base_of_recommendations": ["[metric: value units]", "[metric: value units]"]
   }},
-  "cost_forecasting": {{
-    "monthly": <projected monthly cost as number>,
-    "annually": <projected annual cost as number>
-  }},
+  "cost_forecasting": {{"monthly": <number>, "annually": <number>}},
   "anomalies": [
-    {{
-      "metric_name": "BucketSizeBytes",
-      "timestamp": "YYYY-MM-DD",
-      "value": <anomaly value>,
-      "reason_short": "Brief explanation"
-    }}
+    {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #, "reason_short": "[why significant]"}},
+    {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #, "reason_short": "[why anomalous]"}},
+    {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #, "reason_short": "[why unusual]"}}
   ],
-  "contract_deal": {{
-    "assessment": "good|bad|unknown",
-    "for sku": "S3 Standard",
-    "reason": "Explanation of storage class assessment",
-    "monthly_saving_pct": <percentage as number>,
-    "annual_saving_pct": <percentage as number>
-  }}
+  "contract_deal": {{"assessment": "good"|"bad"|"unknown", "for sku": "S3 Standard", "reason": "...", "monthly_saving_pct": #, "annual_saving_pct": #}}
 }}
-
-Return ONLY the JSON object, no additional text.
 """
     return prompt
 
