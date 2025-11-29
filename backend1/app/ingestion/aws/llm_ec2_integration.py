@@ -229,8 +229,8 @@ You are a cloud cost optimization expert for AWS. Analyze the following EC2 inst
 
 **Performance Metrics:**
 - CPU Utilization: Avg {cpu_avg:.2f}%, Max {cpu_max:.2f}% (on {cpu_max_date})
-- Network In: Avg {network_in_avg:.2f} bytes, Max {network_in_max:.2f} bytes
-- Network Out: Avg {network_out_avg:.2f} bytes, Max {network_out_max:.2f} bytes
+- Network In: Avg {network_in_avg:.2f} GB, Max {network_in_max:.2f} GB
+- Network Out: Avg {network_out_avg:.2f} GB, Max {network_out_max:.2f} GB
 - Disk Read Ops: Avg {disk_read_avg:.2f} ops/sec
 - Disk Write Ops: Avg {disk_write_avg:.2f} ops/sec
 

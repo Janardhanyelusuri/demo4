@@ -38,6 +38,7 @@ def _format_metrics_for_llm(resource_data: dict, resource_type: str = "vm") -> D
     """
     Groups and formats RELEVANT metric data (AVG, MAX, MaxDate) for the LLM.
     Filters to only cost-relevant metrics to reduce token usage.
+    Adds unit clarification for metrics converted from bytes to GB.
 
     Args:
         resource_data: Dict containing metric data with keys like "metric_X_Avg"
@@ -64,7 +65,9 @@ def _format_metrics_for_llm(resource_data: dict, resource_type: str = "vm") -> D
             "Availability",
             "SuccessServerLatency",
             "BlobCapacity",
-            "FileCapacity"
+            "FileCapacity",
+            "TableCapacity",
+            "QueueCapacity"
         ],
         "publicip": [
             "PacketCount",
@@ -76,6 +79,30 @@ def _format_metrics_for_llm(resource_data: dict, resource_type: str = "vm") -> D
             "UDPBytesForwardedDDoS",
             "UDPBytesInDDoS"
         ]
+    }
+
+    # Metrics that have been converted from bytes to GB (for display name correction)
+    BYTE_TO_GB_METRICS = {
+        # VM metrics
+        "Available Memory Bytes": "Available Memory (GB)",
+        "Network In": "Network In (GB)",
+        "Network Out": "Network Out (GB)",
+        "Network In Total": "Network In Total (GB)",
+        "Network Out Total": "Network Out Total (GB)",
+        # Storage metrics
+        "UsedCapacity": "Used Capacity (GB)",
+        "BlobCapacity": "Blob Capacity (GB)",
+        "FileCapacity": "File Capacity (GB)",
+        "TableCapacity": "Table Capacity (GB)",
+        "QueueCapacity": "Queue Capacity (GB)",
+        "Ingress": "Ingress (GB)",
+        "Egress": "Egress (GB)",
+        # Public IP metrics
+        "ByteCount": "Byte Count (GB)",
+        "TCPBytesForwardedDDoS": "TCP Bytes Forwarded DDoS (GB)",
+        "TCPBytesInDDoS": "TCP Bytes In DDoS (GB)",
+        "UDPBytesForwardedDDoS": "UDP Bytes Forwarded DDoS (GB)",
+        "UDPBytesInDDoS": "UDP Bytes In DDoS (GB)"
     }
 
     relevant_metric_names = RELEVANT_METRICS.get(resource_type, [])
@@ -107,7 +134,9 @@ def _format_metrics_for_llm(resource_data: dict, resource_type: str = "vm") -> D
 
         # Only include if at least one value is present and not None
         if any(v is not None for v in entry.values()):
-            formatted_metrics[metric_name] = entry
+            # Use corrected display name if metric was converted to GB
+            display_name = BYTE_TO_GB_METRICS.get(metric_name, metric_name)
+            formatted_metrics[display_name] = entry
 
     return formatted_metrics
 
