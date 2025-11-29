@@ -117,7 +117,7 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
             us.bucket_name,
             us.account_id,
             us.region,
-            MAX(m.metrics_json) AS metrics_json,  -- Use MAX() since metrics_json is already aggregated per bucket
+            MAX(m.metrics_json::text)::json AS metrics_json,  -- Cast to text for MAX(), then back to json
             -- Pull cost fields from the focus table (assuming one cost record per bucket/period)
             MAX(ff.pricing_category) AS pricing_category,
             MAX(ff.pricing_unit) AS pricing_unit,
