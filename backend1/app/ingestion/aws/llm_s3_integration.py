@@ -117,7 +117,7 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
             us.bucket_name,
             us.account_id,
             us.region,
-            m.metrics_json,
+            MAX(m.metrics_json) AS metrics_json,  -- Use MAX() since metrics_json is already aggregated per bucket
             -- Pull cost fields from the focus table (assuming one cost record per bucket/period)
             MAX(ff.pricing_category) AS pricing_category,
             MAX(ff.pricing_unit) AS pricing_unit,
@@ -129,10 +129,10 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
         LEFT JOIN metric_map m ON m.bucket_name = us.bucket_name
         LEFT JOIN {schema_name}.gold_aws_fact_focus ff
             -- Join cost on resource_id = bucket_name
-            ON ff.resource_id = us.bucket_name 
-               AND ff.charge_period_start::date <= %s 
+            ON ff.resource_id = us.bucket_name
+               AND ff.charge_period_start::date <= %s
                AND ff.charge_period_end::date >= %s
-        GROUP BY 1, 2, 3, 4 -- Group by non-aggregated fields, including the resulting JSON column
+        GROUP BY 1, 2, 3 -- Group by bucket_name, account_id, region only
     """).format(
         schema_name=sql.Identifier(schema_name),
         bucket_filter=bucket_filter_sql
@@ -186,7 +186,7 @@ def generate_s3_prompt(bucket_data: dict) -> str:
     account_id = bucket_data.get('account_id', 'Unknown')
     billed_cost = bucket_data.get('billed_cost', 0)
 
-    # Extract common S3 metrics
+    # Extract common S3 metrics (already converted to GB in SQL query)
     bucket_size_avg = bucket_data.get('metric_BucketSizeBytes_Avg', 0)
     bucket_size_max = bucket_data.get('metric_BucketSizeBytes_Max', 0)
     bucket_size_max_date = bucket_data.get('metric_BucketSizeBytes_MaxDate', 'N/A')
@@ -197,10 +197,6 @@ def generate_s3_prompt(bucket_data: dict) -> str:
     start_date = bucket_data.get('start_date', 'N/A')
     end_date = bucket_data.get('end_date', 'N/A')
     duration_days = bucket_data.get('duration_days', 0)
-
-    # Convert bytes to GB for readability
-    size_avg_gb = bucket_size_avg / (1024**3) if bucket_size_avg else 0
-    size_max_gb = bucket_size_max / (1024**3) if bucket_size_max else 0
 
     prompt = f"""
 You are a cloud cost optimization expert for AWS. Analyze the following S3 bucket and provide optimization recommendations in strict JSON format.
@@ -213,7 +209,7 @@ You are a cloud cost optimization expert for AWS. Analyze the following S3 bucke
 - Total Billed Cost: ${billed_cost:.2f}
 
 **Storage Metrics:**
-- Bucket Size: Avg {size_avg_gb:.2f} GB, Max {size_max_gb:.2f} GB (on {bucket_size_max_date})
+- Bucket Size: Avg {bucket_size_avg:.2f} GB, Max {bucket_size_max:.2f} GB (on {bucket_size_max_date})
 - Object Count: Avg {object_count_avg:.0f}, Max {object_count_max:.0f}
 
 **Your Task:**
@@ -243,7 +239,7 @@ Based on the storage metrics above, provide cost optimization recommendations. C
       }}
     ],
     "base_of_recommendations": [
-      "Bucket size: {size_avg_gb:.2f} GB avg, {size_max_gb:.2f} GB max",
+      "Bucket size: {bucket_size_avg:.2f} GB avg, {bucket_size_max:.2f} GB max",
       "Object count: {object_count_avg:.0f} avg",
       "Reasoning based on metrics"
     ]

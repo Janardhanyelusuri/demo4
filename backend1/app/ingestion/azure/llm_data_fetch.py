@@ -406,17 +406,17 @@ def fetch_storage_account_utilization_data(
         SELECT
             resource_id,
             metric_name,
-            -- Convert bytes to GB for Ingress and Egress metrics
+            -- Convert bytes to GB for network and capacity metrics
             AVG(
                 CASE
-                    WHEN metric_name IN ('Ingress', 'Egress')
+                    WHEN metric_name IN ('Ingress', 'Egress', 'UsedCapacity', 'BlobCapacity', 'FileCapacity', 'TableCapacity', 'QueueCapacity')
                     THEN daily_value_avg / 1073741824.0  -- Convert bytes to GB (1024^3)
                     ELSE daily_value_avg
                 END
             ) AS avg_value,
             MAX(
                 CASE
-                    WHEN metric_name IN ('Ingress', 'Egress')
+                    WHEN metric_name IN ('Ingress', 'Egress', 'UsedCapacity', 'BlobCapacity', 'FileCapacity', 'TableCapacity', 'QueueCapacity')
                     THEN daily_value_max / 1073741824.0  -- Convert bytes to GB (1024^3)
                     ELSE daily_value_max
                 END
