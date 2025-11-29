@@ -97,15 +97,18 @@ def fetch_s3_bucket_utilization_data(conn, schema_name, start_date, end_date, bu
             SELECT
                 bucket_name,
                 -- Combine AVG, MAX value, and MAX date into a single JSON object per bucket
-                json_object_agg(
-                    metric_name || '_Avg', ROUND(avg_value::numeric, 6)
-                ) || 
-                json_object_agg(
-                    metric_name || '_Max', ROUND(max_value::numeric, 6)
-                ) ||
-                json_object_agg(
-                    metric_name || '_MaxDate', TO_CHAR(max_date, 'YYYY-MM-DD')
-                ) AS metrics_json
+                -- Cast to jsonb for concatenation operator to work
+                (
+                    json_object_agg(
+                        metric_name || '_Avg', ROUND(avg_value::numeric, 6)
+                    )::jsonb ||
+                    json_object_agg(
+                        metric_name || '_Max', ROUND(max_value::numeric, 6)
+                    )::jsonb ||
+                    json_object_agg(
+                        metric_name || '_MaxDate', TO_CHAR(max_date, 'YYYY-MM-DD')
+                    )::jsonb
+                )::json AS metrics_json
             FROM usage_summary
             GROUP BY 1
         )
