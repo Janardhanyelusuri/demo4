@@ -6,6 +6,7 @@ import psycopg2
 from .metrics_vm import metrics_dump
 from .metrics_storage_account import metrics_dump as storage_metrics_dump
 from .metrics_public_ip import metrics_dump as public_ip_metrics_dump
+from .pricing import fetch_and_store_all_azure_pricing
 import json
 import sys
 import os
@@ -41,6 +42,18 @@ def azure_main(project_name,
     print(f'Table {table_name} created')
     run_sql_file(f'{base_path}/sql/bronze_metrics.sql', schema_name, budget)
     run_sql_file(f'{base_path}/sql/genai_response.sql', schema_name, budget)
+
+    # Create pricing tables
+    run_sql_file(f'{base_path}/sql/pricing_tables.sql', schema_name, budget)
+    print(f'Pricing tables created')
+
+    # Fetch and store Azure pricing data (early in pipeline for LLM use)
+    try:
+        # Detect region from data or use default eastus
+        fetch_and_store_all_azure_pricing(schema_name, region="eastus", currency="USD")
+    except Exception as e:
+        print(f'⚠️ Error fetching Azure pricing: {e}')
+        # Continue even if pricing fetch fails
 
 
     # Check for existing hash keys in the PostgreSQL table

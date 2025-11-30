@@ -11,6 +11,7 @@ from app.ingestion.aws.postgres_operations import execute_sql_files, dump_to_pos
 from .resource_metrics import fetch_and_store_cloudwatch_metrics
 from app.ingestion.aws.metrics_s3 import metrics_dump as metrics_dump_s3
 from app.ingestion.aws.metrics_ec2 import metrics_dump as metrics_dump_ec2
+from .pricing import fetch_and_store_all_aws_pricing
 import sys
 import os
 
@@ -145,6 +146,23 @@ def aws_run_ingestion(project_name,
             print(f'Schema {schema_name} created....')
             execute_sql_files(sql_file_paths['create_table'], schema_name, monthly_budget)
             print(f'Table {table_name} created....')
+
+            # Create pricing tables
+            execute_sql_files(f'{base_path}/sql/pricing_tables.sql', schema_name, monthly_budget)
+            print(f'Pricing tables created....')
+
+            # Fetch and store AWS pricing data (early in pipeline for LLM use)
+            try:
+                fetch_and_store_all_aws_pricing(
+                    schema_name=schema_name,
+                    aws_access_key=aws_access_key,
+                    aws_secret_key=aws_secret_key,
+                    region=aws_region
+                )
+            except Exception as e:
+                print(f'⚠️ Error fetching AWS pricing: {e}')
+                # Continue even if pricing fetch fails
+
             # Create S3 client
             s3_client = get_s3_client(aws_access_key, aws_secret_key, aws_region)
 
