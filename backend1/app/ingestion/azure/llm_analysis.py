@@ -14,7 +14,16 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
 from app.core.genai import llm_call
 from app.ingestion.azure.llm_json_extractor import extract_json_str
-# from app.ingestion.azure.llm_json_extractor import extract_json_str # Assuming this is the correct import
+# Import pricing helpers for dynamic pricing context
+from app.ingestion.azure.pricing_helpers import (
+    get_vm_current_pricing,
+    get_vm_alternative_pricing,
+    get_storage_pricing_context,
+    get_public_ip_pricing_context,
+    format_vm_pricing_for_llm,
+    format_storage_pricing_for_llm,
+    format_ip_pricing_for_llm
+)
 
 # --- Utility Functions ---
 
@@ -192,12 +201,33 @@ JSON (MUST: 2-3 additional_recommendation, 2-3 anomalies):
 """
 
 def _generate_compute_prompt(resource_data: dict, start_date: str, end_date: str, monthly_forecast: float, annual_forecast: float) -> str:
-    """Generates the structured prompt for Compute/VM LLM analysis with dynamically included metrics."""
+    """Generates the structured prompt for Compute/VM LLM analysis with dynamically included metrics and pricing."""
 
     # Prepare the structured metrics for the prompt (only VM-relevant metrics)
     formatted_metrics = _format_metrics_for_llm(resource_data, resource_type="vm")
     current_sku = resource_data.get("instance_type", "N/A")
     billed_cost = resource_data.get("billed_cost", 0.0)
+
+    # Fetch pricing data from database
+    schema_name = resource_data.get("schema_name", "")
+    region = resource_data.get("region", "eastus")
+
+    pricing_context = ""
+    if schema_name and current_sku and current_sku != "N/A":
+        try:
+            # Get current SKU pricing
+            current_pricing = get_vm_current_pricing(schema_name, current_sku, region)
+
+            # Get alternative SKU pricing
+            alternative_pricing = get_vm_alternative_pricing(schema_name, current_sku, region, max_results=10)
+
+            # Format pricing for LLM
+            pricing_context = "\n\n" + format_vm_pricing_for_llm(current_pricing, alternative_pricing) + "\n"
+        except Exception as e:
+            print(f"⚠️ Error fetching VM pricing data: {e}")
+            pricing_context = "\n\nPRICING DATA: Not available\n"
+    else:
+        pricing_context = "\n\nPRICING DATA: Not available (schema or SKU not provided)\n"
 
     return f"""Azure VM FinOps. Analyze metrics, output JSON only.
 
@@ -205,34 +235,37 @@ CONTEXT: {resource_data.get("resource_id", "N/A")} | SKU: {current_sku} | {start
 
 METRICS:
 {json.dumps(formatted_metrics, indent=2)}
-
+{pricing_context}
 RULES:
 1. Use exact values+units from METRICS (e.g., "CPU: 12.3% avg, 35.7% max", "Memory: 8.2 GB")
-2. State exact SKU names+specs (e.g., "Standard_D4s_v3 (4 vCPU, 16 GB RAM) → Standard_B2s (2 vCPU, 4 GB RAM)")
-3. Express savings as PERCENTAGES only (e.g., "Can reduce by 60%", "Save 40% with reservation")
-4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", "smaller instance", any dollar amounts in recommendations
-5. Use action verbs: Downsize, Upsize, Purchase, Enable, Disable, Change, Configure, Migrate
-6. Every recommendation needs explanation with actual metrics showing WHY
-7. Always include units: %, GB, vCPU, IOPS, ops/sec
+2. **CRITICAL: Base ALL SKU recommendations on PRICING DATA above. Use exact SKU names and monthly costs from pricing table**
+3. State exact SKU names+specs from PRICING DATA (e.g., "Standard_D4s_v3 ($140/mo) → Standard_B2s ($70/mo)")
+4. Express savings as PERCENTAGES calculated from PRICING DATA (e.g., "Save 50% = ($140-$70)/$140")
+5. **BANNED**: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", "smaller instance", generic statements without pricing
+6. Use action verbs: Downsize, Upsize, Purchase, Enable, Disable, Change, Configure, Migrate
+7. Every recommendation MUST reference actual pricing from PRICING DATA section
+8. Always include units: %, GB, vCPU, IOPS, ops/sec, $/month
+9. For contract_deal assessment, compare current hourly rate vs reserved instance pricing (typically 30-40% discount)
 
-DECIDE: Primary optimization (downsize/upsize/RI/auto-shutdown/disk/other)? VM size change (to what SKU, why)? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies?
+DECIDE: Primary optimization (downsize/upsize/RI/auto-shutdown/disk/other)? VM size change (to which SKU from PRICING DATA, with exact monthly cost)? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies?
 
-JSON (MUST: 2-3 additional_recommendation,  must include units for values of all 2-3 anomalies metrics):
+JSON (MUST: 2-3 additional_recommendation, must include units for values of all 2-3 anomalies metrics):
 {{
   "recommendations": {{
-    "effective_recommendation": {{"text": "[action with exact SKU specs]", "explanation": "[why with metrics]", "saving_pct": #}},
+    "effective_recommendation": {{"text": "[action with exact SKU from PRICING DATA + monthly cost]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
     "additional_recommendation": [
-      {{"text": "[action with exact details]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact details]", "explanation": "[why with metrics]", "saving_pct": #}},    ],
-    "base_of_recommendations": ["[metric: value units]", "[metric: value units]"]
+      {{"text": "[action with exact details from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
+      {{"text": "[action with exact details from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}}
+    ],
+    "base_of_recommendations": ["[metric: value units]", "[pricing: SKU cost]"]
   }},
   "cost_forecasting": {{"monthly": {monthly_forecast:.2f}, "annually": {annual_forecast:.2f}}},
   "anomalies": [
     {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": # with units, "reason_short": "[why significant]"}},
     {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": # with units, "reason_short": "[why anomalous]"}},
-    {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #with units, "reason_short": "[why unusual]"}}
+    {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": # with units, "reason_short": "[why unusual]"}}
   ],
-  "contract_deal": {{"assessment": "good"|"bad"|"unknown", "for sku": "{current_sku}", "reason": "...", "monthly_saving_pct": #, "annual_saving_pct": #}}
+  "contract_deal": {{"assessment": "good"|"bad"|"unknown", "for sku": "{current_sku}", "reason": "[compare pay-as-you-go vs RI pricing from PRICING DATA]", "monthly_saving_pct": #, "annual_saving_pct": #}}
 }}
 """
 

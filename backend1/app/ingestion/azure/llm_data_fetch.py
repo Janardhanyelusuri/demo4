@@ -334,6 +334,10 @@ def run_llm_vm(conn, schema_name, start_date=None, end_date=None, resource_id=No
         print(f"⚠️ WARNING: Resource ID was provided, but {df.shape[0]} records were fetched. Restricting to the first record for LLM analysis.")
     resource_row = df.head(1).to_dict(orient="records")[0]
 
+    # Add schema_name and region to resource_row for pricing lookups
+    resource_row['schema_name'] = schema_name
+    resource_row['region'] = resource_row.get('location', 'eastus')  # Extract region from location or default
+
     # Check cancellation again before calling expensive LLM
     if task_id:
         is_cancelled = task_manager.is_cancelled(task_id)
@@ -698,6 +702,9 @@ def run_llm_vm_all_resources(conn, schema_name, start_date=None, end_date=None, 
 
         try:
             resource_dict = row.to_dict()
+            # Add schema_name and region for pricing lookups
+            resource_dict['schema_name'] = schema_name
+            resource_dict['region'] = resource_dict.get('location', 'eastus')
             recommendation = get_compute_recommendation_single(resource_dict)
 
             if recommendation:
