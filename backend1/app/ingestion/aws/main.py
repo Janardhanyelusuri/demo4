@@ -11,6 +11,12 @@ from app.ingestion.aws.postgres_operations import execute_sql_files, dump_to_pos
 from .resource_metrics import fetch_and_store_cloudwatch_metrics
 from app.ingestion.aws.metrics_s3 import metrics_dump as metrics_dump_s3
 from app.ingestion.aws.metrics_ec2 import metrics_dump as metrics_dump_ec2
+import sys
+import os
+
+# Add path for recommendation pre-warming
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+from app.core.recommendation_prewarm import prewarm_aws_recommendations
 
 
 
@@ -303,6 +309,17 @@ def aws_run_ingestion(project_name,
         metrics_dump_ec2(aws_access_key, aws_secret_key, aws_region, schema_name)
         execute_sql_files(f'{base_path}/sql/silver_ec2_metrics.sql', schema_name, monthly_budget)
         execute_sql_files(f'{base_path}/sql/gold_ec2_metrics.sql', schema_name, monthly_budget)
+
+        # Pre-warm LLM recommendations cache for all resources and date ranges
+        print(f"\n🔥 Starting recommendation cache pre-warming...")
+        try:
+            prewarm_aws_recommendations(schema_name, monthly_budget)
+            print(f"✅ Recommendation cache pre-warming completed successfully")
+        except Exception as e:
+            print(f"⚠️ Error during recommendation pre-warming: {e}")
+            # Don't fail the entire ingestion if pre-warming fails
+            import traceback
+            traceback.print_exc()
 
     except Exception as ex:
         print(f"An error occurred: {ex}")

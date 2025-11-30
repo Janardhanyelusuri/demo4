@@ -7,6 +7,12 @@ from .metrics_vm import metrics_dump
 from .metrics_storage_account import metrics_dump as storage_metrics_dump
 from .metrics_public_ip import metrics_dump as public_ip_metrics_dump
 import json
+import sys
+import os
+
+# Add path for recommendation pre-warming
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+from app.core.recommendation_prewarm import prewarm_azure_recommendations
 
 
 def azure_main(project_name,
@@ -78,6 +84,17 @@ def azure_main(project_name,
     run_sql_file(f'{base_path}/sql/silver_public_ip_metrics.sql', schema_name, budget)
 
     run_sql_file(f'{base_path}/sql/gold_public_ip_metrics.sql', schema_name, budget)
+
+    # Pre-warm LLM recommendations cache for all resources and date ranges
+    print(f"\n🔥 Starting recommendation cache pre-warming...")
+    try:
+        prewarm_azure_recommendations(schema_name, budget)
+        print(f"✅ Recommendation cache pre-warming completed successfully")
+    except Exception as e:
+        print(f"⚠️ Error during recommendation pre-warming: {e}")
+        # Don't fail the entire ingestion if pre-warming fails
+        import traceback
+        traceback.print_exc()
 
 
 # used to test in local---
