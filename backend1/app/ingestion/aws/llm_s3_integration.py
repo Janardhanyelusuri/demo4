@@ -6,7 +6,7 @@ import json
 import hashlib
 from datetime import datetime, timedelta
 import logging
-from psycopg2 import sql 
+from psycopg2 import sql
 from typing import Optional # Added Optional type hint for clarity
 
 # Setup logging
@@ -17,6 +17,10 @@ LOG = logging.getLogger("s3_llm_integration")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
 from app.core.genai import llm_call
 from app.ingestion.aws.postgres_operations import connection, dump_to_postgresql, fetch_existing_hash_keys
+from app.ingestion.aws.pricing_helpers import (
+    get_s3_storage_class_pricing,
+    format_s3_pricing_for_llm
+)
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
@@ -234,34 +238,51 @@ def generate_s3_prompt(bucket_data: dict) -> str:
     # Format metrics with proper units
     formatted_metrics = _format_s3_metrics_for_llm(bucket_data)
 
+    # Fetch S3 storage class pricing from database
+    schema_name = bucket_data.get('schema_name', '')
+
+    pricing_context = ""
+    if schema_name:
+        try:
+            s3_pricing = get_s3_storage_class_pricing(schema_name, region)
+            # Assume current storage class is S3 Standard (most common default)
+            current_class = "STANDARD"
+            pricing_context = "\n\n" + format_s3_pricing_for_llm(s3_pricing, current_class) + "\n"
+        except Exception as e:
+            LOG.warning(f"Could not fetch S3 pricing: {e}")
+            pricing_context = "\n\nPRICING DATA: Not available in pricing database\n"
+
     prompt = f"""AWS S3 FinOps. Analyze metrics, output JSON only.
 
 CONTEXT: {bucket_name} | Region: {region} | {start_date} to {end_date} ({duration_days}d) | Cost: ${billed_cost:.2f}
 
 METRICS:
 {json.dumps(formatted_metrics, indent=2)}
+{pricing_context}
 
 RULES:
 1. Use exact values+units from METRICS (e.g., "512.5 GB", "1,247 requests")
-2. State exact storage class names (e.g., "S3 Standard → S3 Glacier Flexible Retrieval")
-3. Express savings as PERCENTAGES only (e.g., "Can reduce by 40%", "Save 75% with Glacier")
-4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", any dollar amounts in recommendations
-5. Use action verbs: Move, Implement, Enable, Configure, Delete, Remove
-6. Every recommendation needs explanation with actual metrics showing WHY
-7. Always include units: GB, requests, objects, %
+2. **CRITICAL: Base ALL storage class recommendations on PRICING DATA above. Use exact storage class names and pricing per GB from pricing table**
+3. State exact storage class names with pricing from PRICING DATA (e.g., "S3 Standard ($0.023/GB) → S3 Glacier Flexible Retrieval ($0.0036/GB)")
+4. Express savings as PERCENTAGES calculated from PRICING DATA (e.g., "Save 84% = ($0.023-$0.0036)/$0.023")
+5. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", generic statements without pricing
+6. Use action verbs: Move, Implement, Enable, Configure, Delete, Remove
+7. Every recommendation MUST reference actual pricing from PRICING DATA section
+8. Always include units: GB, requests, objects, %, $/GB
+9. For contract_deal assessment, analyze if current storage class pricing is optimal for usage patterns based on PRICING DATA
 
-DECIDE: Primary optimization (storage class/lifecycle/versioning)? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies (spikes/drops)?
+DECIDE: Primary optimization (storage class/lifecycle/versioning based on PRICING DATA)? 2-3 additional optimizations? Which metrics + pricing drove decisions? 2-3 anomalies (spikes/drops)?
 
-JSON (MUST: 2-3 additional_recommendation, 2-3 anomalies):
+JSON (MUST: 2-3 additional_recommendation with pricing references, 2-3 anomalies):
 {{
   "recommendations": {{
-    "effective_recommendation": {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
+    "effective_recommendation": {{"text": "[action with exact storage class from PRICING DATA + $/GB]", "explanation": "[why with metrics + pricing comparison]", "saving_pct": #}},
     "additional_recommendation": [
-      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}}
+      {{"text": "[action with exact storage class from PRICING DATA + $/GB]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
+      {{"text": "[action with exact storage class from PRICING DATA + $/GB]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
+      {{"text": "[action with exact storage class from PRICING DATA + $/GB]", "explanation": "[why with metrics + pricing]", "saving_pct": #}}
     ],
-    "base_of_recommendations": ["[metric: value units]", "[metric: value units]"]
+    "base_of_recommendations": ["[metric: value units]", "[pricing: storage class $/GB]"]
   }},
   "cost_forecasting": {{"monthly": <number>, "annually": <number>}},
   "anomalies": [
@@ -269,7 +290,7 @@ JSON (MUST: 2-3 additional_recommendation, 2-3 anomalies):
     {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #, "reason_short": "[why anomalous]"}},
     {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #, "reason_short": "[why unusual]"}}
   ],
-  "contract_deal": {{"assessment": "good"|"bad"|"unknown", "for sku": "S3 Standard", "reason": "...", "monthly_saving_pct": #, "annual_saving_pct": #}}
+  "contract_deal": {{"assessment": "good"|"bad"|"unknown", "for sku": "S3 Standard", "reason": "[compare current storage class pricing vs alternatives from PRICING DATA]", "monthly_saving_pct": #, "annual_saving_pct": #}}
 }}
 """
     return prompt
@@ -353,6 +374,9 @@ def run_llm_analysis_s3(schema_name, start_date=None, end_date=None, bucket_name
     recommendations = []
 
     for bucket_data in buckets:
+        # Add schema_name and region for pricing lookups
+        bucket_data['schema_name'] = schema_name
+        bucket_data['region'] = bucket_data.get('region', 'us-east-1')
         rec = get_s3_recommendation_single(bucket_data)
         if rec:
             recommendations.append(rec)

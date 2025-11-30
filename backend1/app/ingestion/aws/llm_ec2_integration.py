@@ -25,6 +25,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from app.core.genai import llm_call
 from app.ingestion.aws.postgres_operations import connection
 from app.ingestion.azure.llm_json_extractor import extract_json
+# Import pricing helpers for dynamic pricing context
+from app.ingestion.aws.pricing_helpers import (
+    get_ec2_current_pricing,
+    get_ec2_alternative_pricing,
+    format_ec2_pricing_for_llm
+)
 
 load_dotenv()
 
@@ -185,7 +191,7 @@ def fetch_ec2_utilization_data(conn, schema_name, start_date, end_date, instance
 
 def generate_ec2_prompt(instance_data: Dict[str, Any]) -> str:
     """
-    Generate LLM prompt for EC2 instance optimization recommendations.
+    Generate LLM prompt for EC2 instance optimization recommendations with pricing context.
 
     Args:
         instance_data: Dictionary containing instance metrics and cost data
@@ -217,10 +223,30 @@ def generate_ec2_prompt(instance_data: Dict[str, Any]) -> str:
     end_date = instance_data.get('end_date', 'N/A')
     duration_days = instance_data.get('duration_days', 0)
 
-    prompt = f"""
-You are a cloud cost optimization expert for AWS. Analyze the following EC2 instance and provide optimization recommendations in strict JSON format.
+    # Fetch pricing data from database
+    schema_name = instance_data.get('schema_name', '')
 
-**EC2 Instance Details:**
+    pricing_context = ""
+    if schema_name and instance_type and instance_type != 'Unknown':
+        try:
+            # Get current instance type pricing
+            current_pricing = get_ec2_current_pricing(schema_name, instance_type, region)
+
+            # Get alternative instance type pricing
+            alternative_pricing = get_ec2_alternative_pricing(schema_name, instance_type, region, max_results=10)
+
+            # Format pricing for LLM
+            pricing_context = "\n\n" + format_ec2_pricing_for_llm(current_pricing, alternative_pricing) + "\n"
+        except Exception as e:
+            LOG.warning(f"⚠️ Error fetching EC2 pricing data: {e}")
+            pricing_context = "\n\nPRICING DATA: Not available\n"
+    else:
+        pricing_context = "\n\nPRICING DATA: Not available (schema or instance type not provided)\n"
+
+    prompt = f"""
+AWS EC2 FinOps. Analyze metrics, output JSON only.
+
+**EC2 Instance Context:**
 - Instance ID: {instance_id}
 - Instance Type: {instance_type}
 - Region: {region}
@@ -233,19 +259,16 @@ You are a cloud cost optimization expert for AWS. Analyze the following EC2 inst
 - Network Out: Avg {network_out_avg:.2f} GB, Max {network_out_max:.2f} GB
 - Disk Read Ops: Avg {disk_read_avg:.2f} ops/sec
 - Disk Write Ops: Avg {disk_write_avg:.2f} ops/sec
-
-**Your Task:**
-Based on the utilization metrics above, provide cost optimization recommendations. Consider:
-1. Is the instance right-sized or should it be resized?
-2. Could this workload run on Spot instances or use Reserved Instances?
-3. Are there scheduling opportunities (e.g., stop during non-business hours)?
-4. Any performance anomalies that indicate inefficient usage?
-
+{pricing_context}
 **RULES:**
-- Express ALL savings as PERCENTAGES only (e.g., "Can reduce by 40%", "Save 65% with Spot")
-- State exact instance type specs (e.g., "t3.large (2 vCPU, 8 GB RAM) → t3.medium (2 vCPU, 4 GB RAM)")
-- BANNED: "consider", "review", "optimize", "significant", "could", "should", any dollar amounts in recommendations
-- Use action verbs: Downsize, Upsize, Switch, Enable, Configure, Purchase
+1. Use exact values+units from metrics (e.g., "CPU: 12.3% avg, 35.7% max")
+2. **CRITICAL: Base ALL instance type recommendations on PRICING DATA above. Use exact instance types and monthly costs from pricing table**
+3. State exact instance type specs from PRICING DATA (e.g., "t3.large ($53/mo, 2 vCPU, 8GB) → t3.medium ($30/mo, 2 vCPU, 4GB)")
+4. Express savings as PERCENTAGES calculated from PRICING DATA (e.g., "Save 43% = ($53-$30)/$53")
+5. **BANNED**: "consider", "review", "optimize", "significant", "could", "should", generic statements without pricing
+6. Use action verbs: Downsize, Upsize, Switch, Enable, Configure, Purchase
+7. Every recommendation MUST reference actual pricing from PRICING DATA section
+8. For contract_deal, compare on-demand vs Reserved Instance pricing (typically 30-40% discount)
 
 **Response Format (JSON only):**
 {{
@@ -377,6 +400,9 @@ def run_llm_analysis_ec2(resource_type: str, schema_name: str,
     recommendations = []
 
     for instance_data in instances:
+        # Add schema_name and region for pricing lookups
+        instance_data['schema_name'] = schema_name
+        instance_data['region'] = instance_data.get('region', 'us-east-1')
         rec = get_ec2_recommendation_single(instance_data)
         if rec:
             recommendations.append(rec)
