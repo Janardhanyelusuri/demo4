@@ -624,6 +624,10 @@ def run_llm_storage(conn, schema_name, start_date=None, end_date=None, resource_
 
     resource_row = df.head(1).to_dict(orient="records")[0]
 
+    # Add schema_name and region for pricing lookups
+    resource_row['schema_name'] = schema_name
+    resource_row['region'] = resource_row.get('location', 'eastus')
+
     # Check cancellation again before calling expensive LLM
     if task_id:
         is_cancelled = task_manager.is_cancelled(task_id)
@@ -780,6 +784,9 @@ def run_llm_storage_all_resources(conn, schema_name, start_date=None, end_date=N
 
         try:
             resource_dict = row.to_dict()
+            # Add schema_name and region for pricing lookups
+            resource_dict['schema_name'] = schema_name
+            resource_dict['region'] = resource_dict.get('location', 'eastus')
             recommendation = get_storage_recommendation_single(resource_dict)
 
             if recommendation:
@@ -1038,6 +1045,10 @@ def run_llm_public_ip(conn, schema_name, start_date=None, end_date=None, resourc
 
     resource_row = df.head(1).to_dict(orient="records")[0]
 
+    # Add schema_name and region for pricing lookups
+    resource_row['schema_name'] = schema_name
+    resource_row['region'] = resource_row.get('location', 'eastus')
+
     # Check cancellation again before calling expensive LLM
     if task_id:
         is_cancelled = task_manager.is_cancelled(task_id)
@@ -1116,6 +1127,9 @@ def run_llm_public_ip_all_resources(conn, schema_name, start_date=None, end_date
 
         try:
             resource_dict = row.to_dict()
+            # Add schema_name and region for pricing lookups
+            resource_dict['schema_name'] = schema_name
+            resource_dict['region'] = resource_dict.get('location', 'eastus')
             recommendation = get_public_ip_recommendation_single(resource_dict)
 
             if recommendation:

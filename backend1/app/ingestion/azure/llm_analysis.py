@@ -152,7 +152,7 @@ def _format_metrics_for_llm(resource_data: dict, resource_type: str = "vm") -> D
 # --- PROMPT GENERATION FUNCTIONS (Updated for dynamic metric inclusion) ---
 
 def _generate_storage_prompt(resource_data: dict, start_date: str, end_date: str, monthly_forecast: float, annual_forecast: float) -> str:
-    """Generates the structured prompt for Storage LLM analysis with dynamically included metrics."""
+    """Generates the structured prompt for Storage LLM analysis with dynamically included metrics and pricing."""
 
     # Prepare the structured metrics for the prompt (only storage-relevant metrics)
     formatted_metrics = _format_metrics_for_llm(resource_data, resource_type="storage")
@@ -160,35 +160,53 @@ def _generate_storage_prompt(resource_data: dict, start_date: str, end_date: str
     current_tier = resource_data.get("access_tier", "N/A")
     billed_cost = resource_data.get("billed_cost", 0.0)
 
-    # Use f-string for better readability and variable injection
+    # Fetch pricing data from database
+    schema_name = resource_data.get("schema_name", "")
+    region = resource_data.get("region", "eastus")
+
+    pricing_context = ""
+    if schema_name:
+        try:
+            # Get storage pricing context for different tiers
+            storage_pricing = get_storage_pricing_context(schema_name, region)
+
+            # Format pricing for LLM
+            pricing_context = "\n\n" + format_storage_pricing_for_llm(storage_pricing) + "\n"
+        except Exception as e:
+            print(f"⚠️ Error fetching Storage pricing data: {e}")
+            pricing_context = "\n\nPRICING DATA: Not available\n"
+    else:
+        pricing_context = "\n\nPRICING DATA: Not available (schema not provided)\n"
+
     return f"""Azure Storage FinOps. Analyze metrics, output JSON only.
 
 CONTEXT: {resource_data.get("resource_id", "N/A")} | {current_sku} {current_tier} | {start_date} to {end_date} ({resource_data.get("duration_days", 30)}d) | Cost: ${billed_cost:.2f} (Est: ${monthly_forecast:.2f}/mo, ${annual_forecast:.2f}/yr)
 
 METRICS:
 {json.dumps(formatted_metrics, indent=2)}
-
+{pricing_context}
 RULES:
 1. Use exact values+units from METRICS (e.g., "478.3 GB", "1,247 tx/day")
-2. State exact SKU/tier names (e.g., "Hot tier → Cool tier")
-3. Express savings as PERCENTAGES only (e.g., "Can reduce by 45%", "Increase efficiency by 30%")
-4. BANNED: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", any dollar amounts in recommendations
-5. Use action verbs: Move, Change, Configure, Enable, Disable, Purchase
-6. Every recommendation needs explanation with actual metrics showing WHY
-7. Always include units: GB, GB/mo, tx/day, %
+2. **CRITICAL: Base tier/SKU recommendations on PRICING DATA above. Use exact pricing per GB from pricing table**
+3. State exact tier names from PRICING DATA (e.g., "Hot tier ($X/GB) → Cool tier ($Y/GB)")
+4. Express savings as PERCENTAGES calculated from PRICING DATA
+5. **BANNED**: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", generic statements without pricing
+6. Use action verbs: Move, Change, Configure, Enable, Disable, Purchase
+7. Every recommendation MUST reference actual pricing from PRICING DATA section
+8. Always include units: GB, GB/mo, tx/day, %, $/GB
 
-DECIDE: Primary optimization? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies (spikes/drops)?
+DECIDE: Primary optimization (tier change/lifecycle/replication/other)? Tier change (to which tier from PRICING DATA)? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies (spikes/drops)?
 
 JSON (MUST: 2-3 additional_recommendation, 2-3 anomalies):
 {{
   "recommendations": {{
-    "effective_recommendation": {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
+    "effective_recommendation": {{"text": "[action with exact tier from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
     "additional_recommendation": [
-      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}},
-      {{"text": "[action with exact values]", "explanation": "[why with metrics]", "saving_pct": #}}
+      {{"text": "[action with exact details from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
+      {{"text": "[action with exact details from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
+      {{"text": "[action with exact details from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}}
     ],
-    "base_of_recommendations": ["[metric: value units]", "[metric: value units]"]
+    "base_of_recommendations": ["[metric: value units]", "[pricing: tier cost]"]
   }},
   "cost_forecasting": {{"monthly": {monthly_forecast:.2f}, "annually": {annual_forecast:.2f}}},
   "anomalies": [
@@ -196,7 +214,7 @@ JSON (MUST: 2-3 additional_recommendation, 2-3 anomalies):
     {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #, "reason_short": "[why anomalous]"}},
     {{"metric_name": "[from METRICS]", "timestamp": "[MaxDate]", "value": #, "reason_short": "[why unusual]"}}
   ],
-  "contract_deal": {{"assessment": "good"|"bad"|"unknown", "for sku": "{current_sku} {current_tier}", "reason": "...", "monthly_saving_pct": #, "annual_saving_pct": #}}
+  "contract_deal": {{"assessment": "good"|"bad"|"unknown", "for sku": "{current_sku} {current_tier}", "reason": "[compare tiers using PRICING DATA]", "monthly_saving_pct": #, "annual_saving_pct": #}}
 }}
 """
 
@@ -374,7 +392,7 @@ def get_compute_recommendation(data: List[Dict[str, Any]]) -> Optional[List[Dict
     return [single] if single else None
 
 def _generate_public_ip_prompt(resource_data: dict, start_date: str, end_date: str, monthly_forecast: float, annual_forecast: float) -> str:
-    """Generates the structured prompt for Public IP LLM analysis with dynamically included metrics."""
+    """Generates the structured prompt for Public IP LLM analysis with dynamically included metrics and pricing."""
 
     # Prepare the structured metrics for the prompt (only PublicIP-relevant metrics)
     formatted_metrics = _format_metrics_for_llm(resource_data, resource_type="publicip")
@@ -384,20 +402,40 @@ def _generate_public_ip_prompt(resource_data: dict, start_date: str, end_date: s
     allocation_method = resource_data.get("allocation_method", "N/A")
     billed_cost = resource_data.get("billed_cost", 0.0)
 
+    # Fetch pricing data from database
+    schema_name = resource_data.get("schema_name", "")
+    region = resource_data.get("region", "eastus")
+
+    pricing_context = ""
+    if schema_name:
+        try:
+            # Get public IP pricing context
+            ip_pricing = get_public_ip_pricing_context(schema_name, region)
+
+            # Format pricing for LLM
+            pricing_context = "\n\n" + format_ip_pricing_for_llm(ip_pricing) + "\n"
+        except Exception as e:
+            print(f"⚠️ Error fetching Public IP pricing data: {e}")
+            pricing_context = "\n\nPRICING DATA: Not available\n"
+    else:
+        pricing_context = "\n\nPRICING DATA: Not available (schema not provided)\n"
+
     # Use f-string for better readability and variable injection
     return f"""Azure Public IP FinOps. Analyze metrics, output JSON only.
 
 CONTEXT: {resource_data.get("resource_id", "N/A")} | {current_sku} {current_tier} | IP: {ip_address} ({allocation_method}) | {start_date} to {end_date} ({resource_data.get("duration_days", 30)}d) | Cost: ${billed_cost:.2f} (Est: ${monthly_forecast:.2f}/mo, ${annual_forecast:.2f}/yr)
 
 METRICS: {json.dumps(formatted_metrics, indent=2)}
-
+{pricing_context}
 RULES:
 1. Use exact values+units from METRICS (e.g., "Packets: 1,234,567", "Bytes: 4.5 GB avg")
-2. State exact SKU/tier specs (e.g., "Basic → Standard", "Static → Dynamic")
-3. Express savings as PERCENTAGES only (e.g., "Can reduce by 100%", "Save 30% with reservation")
-4. BANNED PHRASES: "consider", "review", "optimize", "could", "might", any dollar amounts in recommendations
-5. Use action verbs: "Switch to Dynamic IP", "Reserve Static IP", "Enable DDoS Protection"
-6. Always include units: packets, bytes, %, Mbps
+2. **CRITICAL: Base allocation/tier recommendations on PRICING DATA above. Use exact pricing from pricing table**
+3. State exact SKU/tier specs from PRICING DATA (e.g., "Basic ($X/mo) → Standard ($Y/mo)")
+4. Express savings as PERCENTAGES calculated from PRICING DATA (e.g., "Can reduce by 100% = $X saved")
+5. **BANNED**: "consider", "review", "optimize", "could", "might", generic statements without pricing
+6. Use action verbs: "Switch to Dynamic IP", "Reserve Static IP", "Enable DDoS Protection"
+7. Every recommendation MUST reference actual pricing from PRICING DATA section
+8. Always include units: packets, bytes, %, Mbps, $/month
 
 DECIDE:
 - Primary optimization? (Reserved vs Dynamic, delete unused, DDoS protection)
