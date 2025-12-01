@@ -2,7 +2,7 @@
 -- Creates tables to store Azure SKU pricing information
 
 -- VM Pricing Table
-CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_vm (
+CREATE TABLE IF NOT EXISTS __schema__.azure_pricing_vm (
     id SERIAL PRIMARY KEY,
     sku_name VARCHAR(255),
     product_name VARCHAR(255),
@@ -22,14 +22,14 @@ CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_vm (
 
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_azure_pricing_vm_sku
-    ON {schema_name}.azure_pricing_vm(sku_name, arm_region_name);
+    ON __schema__.azure_pricing_vm(sku_name, arm_region_name);
 
 CREATE INDEX IF NOT EXISTS idx_azure_pricing_vm_region
-    ON {schema_name}.azure_pricing_vm(arm_region_name);
+    ON __schema__.azure_pricing_vm(arm_region_name);
 
 
 -- Storage Pricing Table
-CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_storage (
+CREATE TABLE IF NOT EXISTS __schema__.azure_pricing_storage (
     id SERIAL PRIMARY KEY,
     sku_name VARCHAR(255),
     product_name VARCHAR(255),
@@ -45,11 +45,11 @@ CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_storage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_azure_pricing_storage_sku
-    ON {schema_name}.azure_pricing_storage(sku_name, arm_region_name);
+    ON __schema__.azure_pricing_storage(sku_name, arm_region_name);
 
 
 -- Managed Disk Pricing Table
-CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_disk (
+CREATE TABLE IF NOT EXISTS __schema__.azure_pricing_disk (
     id SERIAL PRIMARY KEY,
     sku_name VARCHAR(255),
     product_name VARCHAR(255),
@@ -64,11 +64,11 @@ CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_disk (
 );
 
 CREATE INDEX IF NOT EXISTS idx_azure_pricing_disk_sku
-    ON {schema_name}.azure_pricing_disk(sku_name, arm_region_name);
+    ON __schema__.azure_pricing_disk(sku_name, arm_region_name);
 
 
 -- Public IP Pricing Table
-CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_ip (
+CREATE TABLE IF NOT EXISTS __schema__.azure_pricing_ip (
     id SERIAL PRIMARY KEY,
     sku_name VARCHAR(255),
     product_name VARCHAR(255),
@@ -83,9 +83,9 @@ CREATE TABLE IF NOT EXISTS {schema_name}.azure_pricing_ip (
 );
 
 CREATE INDEX IF NOT EXISTS idx_azure_pricing_ip_sku
-    ON {schema_name}.azure_pricing_ip(sku_name, arm_region_name);
+    ON __schema__.azure_pricing_ip(sku_name, arm_region_name);
 
 
 -- Grant permissions
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schema_name} TO PUBLIC;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {schema_name} TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA __schema__ TO PUBLIC;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA __schema__ TO PUBLIC;

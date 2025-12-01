@@ -2,7 +2,7 @@
 -- Creates tables to store AWS service pricing information
 
 -- EC2 Instance Pricing Table
-CREATE TABLE IF NOT EXISTS {schema_name}.aws_pricing_ec2 (
+CREATE TABLE IF NOT EXISTS __schema__.aws_pricing_ec2 (
     id SERIAL PRIMARY KEY,
     instance_type VARCHAR(100),
     vcpu VARCHAR(50),
@@ -24,17 +24,17 @@ CREATE TABLE IF NOT EXISTS {schema_name}.aws_pricing_ec2 (
 
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_aws_pricing_ec2_instance_type
-    ON {schema_name}.aws_pricing_ec2(instance_type, region);
+    ON __schema__.aws_pricing_ec2(instance_type, region);
 
 CREATE INDEX IF NOT EXISTS idx_aws_pricing_ec2_region
-    ON {schema_name}.aws_pricing_ec2(region);
+    ON __schema__.aws_pricing_ec2(region);
 
 CREATE INDEX IF NOT EXISTS idx_aws_pricing_ec2_family
-    ON {schema_name}.aws_pricing_ec2(instance_family);
+    ON __schema__.aws_pricing_ec2(instance_family);
 
 
 -- S3 Storage Pricing Table
-CREATE TABLE IF NOT EXISTS {schema_name}.aws_pricing_s3 (
+CREATE TABLE IF NOT EXISTS __schema__.aws_pricing_s3 (
     id SERIAL PRIMARY KEY,
     storage_class VARCHAR(100),
     volume_type VARCHAR(100),
@@ -49,14 +49,14 @@ CREATE TABLE IF NOT EXISTS {schema_name}.aws_pricing_s3 (
 );
 
 CREATE INDEX IF NOT EXISTS idx_aws_pricing_s3_storage_class
-    ON {schema_name}.aws_pricing_s3(storage_class, region);
+    ON __schema__.aws_pricing_s3(storage_class, region);
 
 CREATE INDEX IF NOT EXISTS idx_aws_pricing_s3_region
-    ON {schema_name}.aws_pricing_s3(region);
+    ON __schema__.aws_pricing_s3(region);
 
 
 -- EBS Volume Pricing Table
-CREATE TABLE IF NOT EXISTS {schema_name}.aws_pricing_ebs (
+CREATE TABLE IF NOT EXISTS __schema__.aws_pricing_ebs (
     id SERIAL PRIMARY KEY,
     volume_type VARCHAR(100),
     storage_media VARCHAR(50),
@@ -71,12 +71,12 @@ CREATE TABLE IF NOT EXISTS {schema_name}.aws_pricing_ebs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_aws_pricing_ebs_volume_type
-    ON {schema_name}.aws_pricing_ebs(volume_type, region);
+    ON __schema__.aws_pricing_ebs(volume_type, region);
 
 CREATE INDEX IF NOT EXISTS idx_aws_pricing_ebs_region
-    ON {schema_name}.aws_pricing_ebs(region);
+    ON __schema__.aws_pricing_ebs(region);
 
 
 -- Grant permissions
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schema_name} TO PUBLIC;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {schema_name} TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA __schema__ TO PUBLIC;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA __schema__ TO PUBLIC;
