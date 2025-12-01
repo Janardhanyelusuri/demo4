@@ -53,7 +53,7 @@ CREATE OR REPLACE FUNCTION aws_tags_view_generation()
 RETURNS text AS $$
 DECLARE
     record_tagkey record;
-    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_aws_tags AS\nSELECT DISTINCT\n    substr(cast(digest(cast("Tags" AS text), \'sha256\') AS text), 3, 64) AS tags_key,');
+    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_aws_tags AS\nSELECT DISTINCT\n    md5(cast("Tags" AS text)) AS tags_key,');
 BEGIN
     -- Loop through each distinct tag key from Tags
     FOR record_tagkey IN

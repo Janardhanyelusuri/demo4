@@ -42,7 +42,7 @@ SELECT
     "BillingAccountId" AS billing_account_id,
     __budget__::integer AS monthly_budget,
 	"x_ServiceCode" AS x_service_code,
-    substr(cast(digest("Tags"::text, 'sha256') as text), 3, 64) as tags_key,
+    md5("Tags"::text) as tags_key,
     "hash_key" as hash_key,
     "ResourceName" as resource_name
 FROM __schema__.silver_focus_aws;
@@ -54,7 +54,7 @@ CREATE OR REPLACE FUNCTION aws_tags_view_generation()
 RETURNS text AS $$
 DECLARE
     record_tagkey record;
-    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_aws_tags AS\nSELECT DISTINCT\n    substr(cast(digest(cast("Tags" AS text), \'sha256\') AS text), 3, 64) AS tags_key,');
+    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_aws_tags AS\nSELECT DISTINCT\n    md5(cast("Tags" AS text)) AS tags_key,');
 BEGIN
     -- Loop through each distinct tag key from Tags
     FOR record_tagkey IN
