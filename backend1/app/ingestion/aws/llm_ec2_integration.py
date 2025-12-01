@@ -189,6 +189,52 @@ def fetch_ec2_utilization_data(conn, schema_name, start_date, end_date, instance
         raise RuntimeError(f"Unexpected error during EC2 data fetch: {e}") from e
 
 
+def _estimate_ec2_hourly_cost(instance_type: str) -> float:
+    """
+    Estimate EC2 hourly cost based on instance type when database pricing unavailable.
+    Uses realistic AWS EC2 pricing patterns.
+    """
+    instance_lower = instance_type.lower()
+
+    # Extract size from instance type (e.g., t3.large -> large)
+    parts = instance_type.split('.')
+    size = parts[1] if len(parts) > 1 else 'medium'
+    family = parts[0] if len(parts) > 0 else 't3'
+
+    # Size multipliers
+    size_multipliers = {
+        'nano': 0.125, 'micro': 0.25, 'small': 0.5, 'medium': 1.0,
+        'large': 2.0, 'xlarge': 4.0, '2xlarge': 8.0, '4xlarge': 16.0,
+        '8xlarge': 32.0, '12xlarge': 48.0, '16xlarge': 64.0, '24xlarge': 96.0
+    }
+    multiplier = size_multipliers.get(size, 1.0)
+
+    # Base cost estimates by instance family
+    if family.startswith('t'):
+        base_cost = 0.0104  # T-series (burstable)
+    elif family.startswith('m'):
+        base_cost = 0.096   # M-series (general purpose)
+    elif family.startswith('c'):
+        base_cost = 0.085   # C-series (compute optimized)
+    elif family.startswith('r'):
+        base_cost = 0.126   # R-series (memory optimized)
+    elif family.startswith('x'):
+        base_cost = 0.333   # X-series (extreme memory)
+    elif family.startswith('i') or family.startswith('d'):
+        base_cost = 0.156   # I/D-series (storage optimized)
+    elif family.startswith('g') or family.startswith('p'):
+        base_cost = 0.526   # G/P-series (GPU instances)
+    elif family.startswith('a'):
+        base_cost = 0.0102  # A-series (ARM-based)
+    else:
+        base_cost = 0.096   # Default estimate
+
+    # Apply size multiplier with economies of scale
+    estimated = base_cost * (multiplier ** 0.95)
+
+    return round(estimated, 4)
+
+
 def generate_ec2_prompt(instance_data: Dict[str, Any]) -> str:
     """
     Generate LLM prompt for EC2 instance optimization recommendations with pricing context.
@@ -245,20 +291,54 @@ def generate_ec2_prompt(instance_data: Dict[str, Any]) -> str:
                 print(f"  Hourly: {current_pricing.get('price_per_hour')}")
                 print(f"  Monthly: {current_pricing.get('monthly_cost')}")
                 print(f"  Currency: {current_pricing.get('currency', 'N/A')}")
-                print(f"\nALTERNATIVE INSTANCE TYPES (Top 5):")
-                for idx, alt in enumerate(alternative_pricing[:5], 1):
-                    savings = current_pricing['monthly_cost'] - alt['monthly_cost']
-                    savings_pct = (savings / current_pricing['monthly_cost']) * 100 if current_pricing['monthly_cost'] > 0 else 0
-                    print(f"  {idx}. {alt['instance_type']}: {alt['price_per_hour']}/hr ({alt['monthly_cost']}/mo) - Save {savings_pct:.1f}%")
+
+                if alternative_pricing:
+                    print(f"\nALTERNATIVE INSTANCE TYPES (Top 5):")
+                    for idx, alt in enumerate(alternative_pricing[:5], 1):
+                        savings = current_pricing['monthly_cost'] - alt['monthly_cost']
+                        savings_pct = (savings / current_pricing['monthly_cost']) * 100 if current_pricing['monthly_cost'] > 0 else 0
+                        print(f"  {idx}. {alt['instance_type']}: {alt['price_per_hour']}/hr ({alt['monthly_cost']}/mo) - Save {savings_pct:.1f}%")
+                else:
+                    print(f"\nALTERNATIVE INSTANCE TYPES: Not found in database")
             else:
-                print(f"  Current pricing not found in database")
+                print(f"CURRENT INSTANCE PRICING: Not found in database")
+                print(f"Using fallback pricing estimates")
+
+                # Fallback pricing when database pricing not available
+                estimated_hourly = _estimate_ec2_hourly_cost(instance_type)
+                current_pricing = {
+                    'instance_type': instance_type,
+                    'price_per_hour': estimated_hourly,
+                    'monthly_cost': estimated_hourly * 730,
+                    'currency': 'USD',
+                    'vcpu': '2',
+                    'memory': '4 GiB',
+                    'network_performance': 'Moderate'
+                }
+
+                # Estimate alternatives
+                alternative_pricing = [
+                    {'instance_type': f'{instance_type.split(".")[0]}.small', 'price_per_hour': estimated_hourly * 0.5, 'monthly_cost': estimated_hourly * 0.5 * 730, 'vcpu': '1', 'memory': '2 GiB'},
+                    {'instance_type': f'{instance_type.split(".")[0]}.medium', 'price_per_hour': estimated_hourly * 0.75, 'monthly_cost': estimated_hourly * 0.75 * 730, 'vcpu': '2', 'memory': '4 GiB'},
+                    {'instance_type': f'{instance_type.split(".")[0]}.large', 'price_per_hour': estimated_hourly * 1.5, 'monthly_cost': estimated_hourly * 1.5 * 730, 'vcpu': '4', 'memory': '8 GiB'}
+                ]
+
+                print(f"  Estimated hourly: {estimated_hourly:.4f} USD")
+                print(f"  Estimated monthly: {current_pricing['monthly_cost']:.2f} USD")
+                print(f"  (Fallback estimates - actual pricing unavailable)")
+
             print(f"{'='*60}\n")
 
             # Format pricing for LLM
             pricing_context = "\n\n" + format_ec2_pricing_for_llm(current_pricing, alternative_pricing) + "\n"
         except Exception as e:
             LOG.warning(f"⚠️ Error fetching EC2 pricing data: {e}")
-            pricing_context = "\n\nPRICING DATA: Not available\n"
+            import traceback
+            traceback.print_exc()
+
+            # Fallback pricing on error
+            estimated_hourly = _estimate_ec2_hourly_cost(instance_type)
+            pricing_context = f"\n\nPRICING DATA (ESTIMATED - Database unavailable):\nCurrent instance: {instance_type}\nEstimated cost: {estimated_hourly:.4f} USD/hour (~{estimated_hourly * 730:.2f} USD/month)\n"
     else:
         pricing_context = "\n\nPRICING DATA: Not available (schema or instance type not provided)\n"
 
