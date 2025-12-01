@@ -259,25 +259,26 @@ def format_vm_pricing_for_llm(current_pricing: Optional[Dict], alternatives: Lis
     if current_pricing:
         output.append("CURRENT VM PRICING:")
         output.append(f"- SKU: {current_pricing['sku_name']}")
-        output.append(f"- Hourly Rate: ${current_pricing['retail_price']:.4f} {current_pricing['currency_code']}")
-        output.append(f"- Monthly Cost: ${current_pricing['monthly_cost']:.2f} {current_pricing['currency_code']}")
+        output.append(f"- Hourly Rate: {current_pricing['retail_price']:.4f} {current_pricing['currency_code']}")
+        output.append(f"- Monthly Cost: {current_pricing['monthly_cost']:.2f} {current_pricing['currency_code']}")
         output.append(f"- Unit: {current_pricing['unit_of_measure']}")
     else:
         output.append("CURRENT VM PRICING: Not available in pricing database")
 
     if alternatives:
         output.append("\nALTERNATIVE VM SKUs (sorted by price):")
+        curr_code = current_pricing.get('currency_code', '') if current_pricing else ''
         for i, alt in enumerate(alternatives[:5], 1):
-            output.append(f"{i}. {alt['sku_name']}: ${alt['retail_price']:.4f}/hr (${alt['monthly_cost']:.2f}/month)")
+            output.append(f"{i}. {alt['sku_name']}: {alt['retail_price']:.4f}/hr ({alt['monthly_cost']:.2f}/month {curr_code})")
 
             if current_pricing and current_pricing['monthly_cost'] > 0:
                 savings = current_pricing['monthly_cost'] - alt['monthly_cost']
                 savings_pct = (savings / current_pricing['monthly_cost']) * 100
 
                 if savings > 0:
-                    output.append(f"   💰 Save ${savings:.2f}/month ({savings_pct:.1f}% reduction)")
+                    output.append(f"   💰 Save {savings:.2f}/month ({savings_pct:.1f}% reduction)")
                 elif savings < 0:
-                    output.append(f"   💸 Cost increase ${abs(savings):.2f}/month ({abs(savings_pct):.1f}% more)")
+                    output.append(f"   💸 Cost increase {abs(savings):.2f}/month ({abs(savings_pct):.1f}% more)")
     else:
         output.append("\nALTERNATIVE VM SKUs: Not available in pricing database")
 
@@ -300,7 +301,7 @@ def format_storage_pricing_for_llm(storage_pricing: Dict) -> str:
     output = ["STORAGE PRICING OPTIONS:"]
 
     for tier, info in list(storage_pricing.items())[:5]:
-        output.append(f"- {info['meter_name']}: ${info['retail_price']:.6f} per {info['unit_of_measure']}")
+        output.append(f"- {info['meter_name']}: {info['retail_price']:.6f} per {info['unit_of_measure']}")
 
     return "\n".join(output)
 
@@ -323,6 +324,6 @@ def format_ip_pricing_for_llm(ip_pricing: Dict) -> str:
     output = ["PUBLIC IP PRICING:"]
 
     for opt in options:
-        output.append(f"- {opt['meter_name']}: ${opt['retail_price']:.6f}/hr (${opt['monthly_cost']:.2f}/month)")
+        output.append(f"- {opt['meter_name']}: {opt['retail_price']:.6f}/hr ({opt['monthly_cost']:.2f}/month)")
 
     return "\n".join(output)

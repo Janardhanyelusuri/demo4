@@ -235,6 +235,25 @@ def generate_ec2_prompt(instance_data: Dict[str, Any]) -> str:
             # Get alternative instance type pricing
             alternative_pricing = get_ec2_alternative_pricing(schema_name, instance_type, region, max_results=10)
 
+            # Debug: Print fetched pricing
+            print(f"\n{'='*60}")
+            print(f"PRICING DEBUG - AWS EC2: {instance_type} in {region}")
+            print(f"{'='*60}")
+            if current_pricing:
+                print(f"CURRENT INSTANCE PRICING:")
+                print(f"  Instance Type: {current_pricing.get('instance_type')}")
+                print(f"  Hourly: {current_pricing.get('price_per_hour')}")
+                print(f"  Monthly: {current_pricing.get('monthly_cost')}")
+                print(f"  Currency: {current_pricing.get('currency', 'N/A')}")
+                print(f"\nALTERNATIVE INSTANCE TYPES (Top 5):")
+                for idx, alt in enumerate(alternative_pricing[:5], 1):
+                    savings = current_pricing['monthly_cost'] - alt['monthly_cost']
+                    savings_pct = (savings / current_pricing['monthly_cost']) * 100 if current_pricing['monthly_cost'] > 0 else 0
+                    print(f"  {idx}. {alt['instance_type']}: {alt['price_per_hour']}/hr ({alt['monthly_cost']}/mo) - Save {savings_pct:.1f}%")
+            else:
+                print(f"  Current pricing not found in database")
+            print(f"{'='*60}\n")
+
             # Format pricing for LLM
             pricing_context = "\n\n" + format_ec2_pricing_for_llm(current_pricing, alternative_pricing) + "\n"
         except Exception as e:
@@ -251,7 +270,7 @@ AWS EC2 FinOps. Analyze metrics, output JSON only.
 - Instance Type: {instance_type}
 - Region: {region}
 - Analysis Period: {start_date} to {end_date} ({duration_days} days)
-- Total Billed Cost: ${billed_cost:.2f}
+- Total Billed Cost: {billed_cost:.2f}
 
 **Performance Metrics:**
 - CPU Utilization: Avg {cpu_avg:.2f}%, Max {cpu_max:.2f}% (on {cpu_max_date})

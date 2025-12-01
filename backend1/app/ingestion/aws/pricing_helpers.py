@@ -255,25 +255,26 @@ def format_ec2_pricing_for_llm(current_pricing: Optional[Dict], alternatives: Li
         output.append("CURRENT EC2 INSTANCE PRICING:")
         output.append(f"- Instance Type: {current_pricing['instance_type']}")
         output.append(f"- vCPU: {current_pricing['vcpu']}, Memory: {current_pricing['memory']}")
-        output.append(f"- Hourly Rate: ${current_pricing['price_per_hour']:.4f} {current_pricing['currency']}")
-        output.append(f"- Monthly Cost: ${current_pricing['monthly_cost']:.2f} {current_pricing['currency']}")
+        output.append(f"- Hourly Rate: {current_pricing['price_per_hour']:.4f} {current_pricing['currency']}")
+        output.append(f"- Monthly Cost: {current_pricing['monthly_cost']:.2f} {current_pricing['currency']}")
         output.append(f"- Network: {current_pricing['network_performance']}")
     else:
         output.append("CURRENT EC2 PRICING: Not available in pricing database")
 
     if alternatives:
         output.append("\nALTERNATIVE EC2 INSTANCES (sorted by price):")
+        curr_currency = current_pricing.get('currency', '') if current_pricing else ''
         for i, alt in enumerate(alternatives[:5], 1):
-            output.append(f"{i}. {alt['instance_type']} ({alt['vcpu']} vCPU, {alt['memory']}): ${alt['price_per_hour']:.4f}/hr (${alt['monthly_cost']:.2f}/month)")
+            output.append(f"{i}. {alt['instance_type']} ({alt['vcpu']} vCPU, {alt['memory']}): {alt['price_per_hour']:.4f}/hr ({alt['monthly_cost']:.2f}/month {curr_currency})")
 
             if current_pricing and current_pricing['monthly_cost'] > 0:
                 savings = current_pricing['monthly_cost'] - alt['monthly_cost']
                 savings_pct = (savings / current_pricing['monthly_cost']) * 100
 
                 if savings > 0:
-                    output.append(f"   💰 Save ${savings:.2f}/month ({savings_pct:.1f}% reduction)")
+                    output.append(f"   💰 Save {savings:.2f}/month ({savings_pct:.1f}% reduction)")
                 elif savings < 0:
-                    output.append(f"   💸 Cost increase ${abs(savings):.2f}/month ({abs(savings_pct):.1f}% more)")
+                    output.append(f"   💸 Cost increase {abs(savings):.2f}/month ({abs(savings_pct):.1f}% more)")
     else:
         output.append("\nALTERNATIVE EC2 INSTANCES: Not available in pricing database")
 
@@ -299,12 +300,12 @@ def format_s3_pricing_for_llm(s3_pricing: Dict, current_class: str = "STANDARD")
     # Show current class first if available
     if current_class in s3_pricing:
         info = s3_pricing[current_class]
-        output.append(f"- CURRENT ({current_class}): ${info['price_per_unit']:.6f} per {info['unit']}")
+        output.append(f"- CURRENT ({current_class}): {info['price_per_unit']:.6f} per {info['unit']}")
 
     # Show alternatives
     for storage_class, info in list(s3_pricing.items())[:7]:
         if storage_class != current_class:
-            output.append(f"- {storage_class}: ${info['price_per_unit']:.6f} per {info['unit']}")
+            output.append(f"- {storage_class}: {info['price_per_unit']:.6f} per {info['unit']}")
 
     return "\n".join(output)
 
@@ -325,7 +326,7 @@ def format_ebs_pricing_for_llm(ebs_pricing: List[Dict]) -> str:
     output = ["EBS VOLUME PRICING:"]
 
     for vol in ebs_pricing:
-        output.append(f"- {vol['volume_type']} ({vol['storage_media']}): ${vol['price_per_gb_month']:.4f} per GB/month")
+        output.append(f"- {vol['volume_type']} ({vol['storage_media']}): {vol['price_per_gb_month']:.4f} per GB/month")
         if vol['max_iops']:
             output.append(f"  Max IOPS: {vol['max_iops']}")
 
