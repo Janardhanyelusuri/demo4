@@ -174,16 +174,42 @@ def _generate_storage_prompt(resource_data: dict, start_date: str, end_date: str
             print(f"\n{'='*60}")
             print(f"PRICING DEBUG - Azure Storage: {current_sku} {current_tier} in {region}")
             print(f"{'='*60}")
-            print(f"STORAGE PRICING OPTIONS (Top 5):")
-            for idx, (tier, info) in enumerate(list(storage_pricing.items())[:5], 1):
-                print(f"  {idx}. {info['meter_name']}: {info['retail_price']:.6f} per {info['unit_of_measure']}")
+
+            if storage_pricing and len(storage_pricing) > 0:
+                print(f"CURRENT TIER: {current_tier}")
+                print(f"\nSTORAGE PRICING OPTIONS (Top 5):")
+                for idx, (tier, info) in enumerate(list(storage_pricing.items())[:5], 1):
+                    marker = "← CURRENT" if current_tier.lower() in info['meter_name'].lower() else ""
+                    print(f"  {idx}. {info['meter_name']}: {info['retail_price']:.6f} per {info['unit_of_measure']} {marker}")
+            else:
+                print(f"CURRENT TIER: {current_tier}")
+                print(f"STORAGE PRICING: Not found in database")
+                print(f"Using fallback pricing estimates")
+
+                # Fallback pricing for common storage tiers
+                storage_pricing = {
+                    'Hot': {'meter_name': 'Hot Tier Data Stored', 'retail_price': 0.0184, 'unit_of_measure': 'GB'},
+                    'Cool': {'meter_name': 'Cool Tier Data Stored', 'retail_price': 0.0115, 'unit_of_measure': 'GB'},
+                    'Archive': {'meter_name': 'Archive Tier Data Stored', 'retail_price': 0.002, 'unit_of_measure': 'GB'},
+                    'Premium': {'meter_name': 'Premium LRS Data Stored', 'retail_price': 0.15, 'unit_of_measure': 'GB'}
+                }
+
+                print(f"  Hot: 0.0184 per GB (estimated)")
+                print(f"  Cool: 0.0115 per GB (estimated)")
+                print(f"  Archive: 0.002 per GB (estimated)")
+                print(f"  (Fallback estimates - actual pricing unavailable)")
+
             print(f"{'='*60}\n")
 
             # Format pricing for LLM
             pricing_context = "\n\n" + format_storage_pricing_for_llm(storage_pricing) + "\n"
         except Exception as e:
             print(f"⚠️ Error fetching Storage pricing data: {e}")
-            pricing_context = "\n\nPRICING DATA: Not available\n"
+            import traceback
+            traceback.print_exc()
+
+            # Fallback pricing on error
+            pricing_context = f"\n\nPRICING DATA (ESTIMATED - Database unavailable):\nCurrent tier: {current_tier}\nHot: ~0.0184 USD/GB, Cool: ~0.0115 USD/GB, Archive: ~0.002 USD/GB\n"
     else:
         pricing_context = "\n\nPRICING DATA: Not available (schema not provided)\n"
 
@@ -267,6 +293,51 @@ JSON OUTPUT (NO placeholders - use actual values from METRICS and PRICING DATA):
 }}
 """
 
+def _estimate_vm_hourly_cost(sku_name: str) -> float:
+    """
+    Estimate VM hourly cost based on SKU name when database pricing unavailable.
+    Uses realistic Azure VM pricing patterns.
+    """
+    sku_lower = sku_name.lower()
+
+    # Extract size from SKU (e.g., Standard_D4s_v3 -> 4)
+    import re
+    size_match = re.search(r'(\d+)', sku_name)
+    size = int(size_match.group(1)) if size_match else 2
+
+    # Base cost estimates by VM series
+    if 'b' in sku_lower or 'burstable' in sku_lower:
+        base_cost = 0.02  # B-series (burstable)
+    elif 'd' in sku_lower:
+        base_cost = 0.096  # D-series (general purpose)
+    elif 'e' in sku_lower:
+        base_cost = 0.126  # E-series (memory optimized)
+    elif 'f' in sku_lower:
+        base_cost = 0.095  # F-series (compute optimized)
+    elif 'a' in sku_lower:
+        base_cost = 0.085  # A-series (ARM-based)
+    elif 'nv' in sku_lower or 'nc' in sku_lower:
+        base_cost = 0.90  # N-series (GPU)
+    elif 'm' in sku_lower:
+        base_cost = 0.250  # M-series (memory optimized large)
+    else:
+        base_cost = 0.10  # Default estimate
+
+    # Scale by size (roughly linear but with volume discount)
+    estimated = base_cost * (size ** 0.9)
+
+    # Premium features (SSD, v3/v4/v5 generations)
+    if 's' in sku_lower:
+        estimated *= 1.15  # Premium SSD support
+    if 'v5' in sku_lower:
+        estimated *= 1.10  # Latest generation
+    elif 'v4' in sku_lower:
+        estimated *= 1.05
+    elif 'v3' in sku_lower:
+        estimated *= 1.02
+
+    return round(estimated, 4)
+
 def _generate_compute_prompt(resource_data: dict, start_date: str, end_date: str, monthly_forecast: float, annual_forecast: float) -> str:
     """Generates the structured prompt for Compute/VM LLM analysis with dynamically included metrics and pricing."""
 
@@ -294,23 +365,60 @@ def _generate_compute_prompt(resource_data: dict, start_date: str, end_date: str
             print(f"\n{'='*60}")
             print(f"PRICING DEBUG - Azure VM: {current_sku} in {region}")
             print(f"{'='*60}")
-            print(f"CURRENT SKU PRICING:")
-            print(f"  SKU: {current_pricing.get('sku_name')}")
-            print(f"  Hourly: {current_pricing.get('retail_price')}")
-            print(f"  Monthly: {current_pricing.get('monthly_cost')}")
-            print(f"  Currency: {current_pricing.get('currency_code', 'N/A')}")
-            print(f"\nALTERNATIVE SKUs (Top 5):")
-            for idx, alt in enumerate(alternative_pricing[:5], 1):
-                savings = current_pricing['monthly_cost'] - alt['monthly_cost']
-                savings_pct = (savings / current_pricing['monthly_cost']) * 100 if current_pricing['monthly_cost'] > 0 else 0
-                print(f"  {idx}. {alt['sku_name']}: {alt['price_per_hour']}/hr ({alt['monthly_cost']}/mo) - Save {savings_pct:.1f}%")
+
+            if current_pricing:
+                print(f"CURRENT SKU PRICING:")
+                print(f"  SKU: {current_pricing.get('sku_name')}")
+                print(f"  Hourly: {current_pricing.get('retail_price')}")
+                print(f"  Monthly: {current_pricing.get('monthly_cost')}")
+                print(f"  Currency: {current_pricing.get('currency_code', 'N/A')}")
+
+                if alternative_pricing:
+                    print(f"\nALTERNATIVE SKUs (Top 5):")
+                    for idx, alt in enumerate(alternative_pricing[:5], 1):
+                        savings = current_pricing['monthly_cost'] - alt['monthly_cost']
+                        savings_pct = (savings / current_pricing['monthly_cost']) * 100 if current_pricing['monthly_cost'] > 0 else 0
+                        print(f"  {idx}. {alt['sku_name']}: {alt['price_per_hour']}/hr ({alt['monthly_cost']}/mo) - Save {savings_pct:.1f}%")
+                else:
+                    print(f"\nALTERNATIVE SKUs: Not found in database")
+            else:
+                print(f"CURRENT SKU PRICING: Not found in database")
+                print(f"Using fallback pricing estimates")
+
+                # Fallback pricing when database pricing not available
+                # Estimate based on typical Azure VM pricing patterns
+                estimated_hourly = _estimate_vm_hourly_cost(current_sku)
+                current_pricing = {
+                    'sku_name': current_sku,
+                    'retail_price': estimated_hourly,
+                    'monthly_cost': estimated_hourly * 730,
+                    'currency_code': 'USD',
+                    'unit_of_measure': '1 Hour'
+                }
+
+                # Estimate alternatives (smaller SKUs typically 50% and 75% of current)
+                alternative_pricing = [
+                    {'sku_name': f'{current_sku.split("_")[0]}_Smaller1', 'price_per_hour': estimated_hourly * 0.5, 'monthly_cost': estimated_hourly * 0.5 * 730},
+                    {'sku_name': f'{current_sku.split("_")[0]}_Smaller2', 'price_per_hour': estimated_hourly * 0.75, 'monthly_cost': estimated_hourly * 0.75 * 730},
+                    {'sku_name': f'{current_sku.split("_")[0]}_Larger1', 'price_per_hour': estimated_hourly * 1.5, 'monthly_cost': estimated_hourly * 1.5 * 730}
+                ]
+
+                print(f"  Estimated hourly: {estimated_hourly:.4f} USD")
+                print(f"  Estimated monthly: {current_pricing['monthly_cost']:.2f} USD")
+                print(f"  (Fallback estimates - actual pricing unavailable)")
+
             print(f"{'='*60}\n")
 
             # Format pricing for LLM
             pricing_context = "\n\n" + format_vm_pricing_for_llm(current_pricing, alternative_pricing) + "\n"
         except Exception as e:
             print(f"⚠️ Error fetching VM pricing data: {e}")
-            pricing_context = "\n\nPRICING DATA: Not available\n"
+            import traceback
+            traceback.print_exc()
+
+            # Fallback pricing on error
+            estimated_hourly = _estimate_vm_hourly_cost(current_sku)
+            pricing_context = f"\n\nPRICING DATA (ESTIMATED - Database unavailable):\nCurrent SKU: {current_sku}\nEstimated cost: {estimated_hourly:.4f} USD/hour (~{estimated_hourly * 730:.2f} USD/month)\n"
     else:
         pricing_context = "\n\nPRICING DATA: Not available (schema or SKU not provided)\n"
 

@@ -252,18 +252,43 @@ def generate_s3_prompt(bucket_data: dict) -> str:
             print(f"\n{'='*60}")
             print(f"PRICING DEBUG - AWS S3: {bucket_name} in {region}")
             print(f"{'='*60}")
-            print(f"S3 STORAGE CLASS PRICING (Top 5):")
-            if s3_pricing:
+            print(f"CURRENT STORAGE CLASS: {current_class} (assumed)")
+
+            if s3_pricing and len(s3_pricing) > 0:
+                print(f"\nS3 STORAGE CLASS PRICING (Top 5):")
                 for idx, (storage_class, info) in enumerate(list(s3_pricing.items())[:5], 1):
-                    print(f"  {idx}. {storage_class}: {info['price_per_unit']:.6f} per {info['unit']}")
+                    marker = "← CURRENT" if storage_class == current_class else ""
+                    print(f"  {idx}. {storage_class}: {info['price_per_unit']:.6f} per {info['unit']} {marker}")
             else:
-                print(f"  No pricing data available")
+                print(f"\nS3 STORAGE CLASS PRICING: Not found in database")
+                print(f"Using fallback pricing estimates")
+
+                # Fallback pricing for common S3 storage classes
+                s3_pricing = {
+                    'STANDARD': {'storage_class': 'STANDARD', 'price_per_unit': 0.023, 'unit': 'GB', 'description': 'S3 Standard Storage'},
+                    'STANDARD_IA': {'storage_class': 'STANDARD_IA', 'price_per_unit': 0.0125, 'unit': 'GB', 'description': 'S3 Standard-IA Storage'},
+                    'INTELLIGENT_TIERING': {'storage_class': 'INTELLIGENT_TIERING', 'price_per_unit': 0.023, 'unit': 'GB', 'description': 'S3 Intelligent-Tiering Storage'},
+                    'ONEZONE_IA': {'storage_class': 'ONEZONE_IA', 'price_per_unit': 0.01, 'unit': 'GB', 'description': 'S3 One Zone-IA Storage'},
+                    'GLACIER': {'storage_class': 'GLACIER', 'price_per_unit': 0.004, 'unit': 'GB', 'description': 'S3 Glacier Storage'},
+                    'GLACIER_DEEP_ARCHIVE': {'storage_class': 'GLACIER_DEEP_ARCHIVE', 'price_per_unit': 0.00099, 'unit': 'GB', 'description': 'S3 Glacier Deep Archive Storage'}
+                }
+
+                print(f"  Standard: 0.023 per GB (estimated)")
+                print(f"  Standard-IA: 0.0125 per GB (estimated)")
+                print(f"  Glacier: 0.004 per GB (estimated)")
+                print(f"  Glacier Deep Archive: 0.00099 per GB (estimated)")
+                print(f"  (Fallback estimates - actual pricing unavailable)")
+
             print(f"{'='*60}\n")
 
             pricing_context = "\n\n" + format_s3_pricing_for_llm(s3_pricing, current_class) + "\n"
         except Exception as e:
             LOG.warning(f"Could not fetch S3 pricing: {e}")
-            pricing_context = "\n\nPRICING DATA: Not available in pricing database\n"
+            import traceback
+            traceback.print_exc()
+
+            # Fallback pricing on error
+            pricing_context = f"\n\nPRICING DATA (ESTIMATED - Database unavailable):\nStandard: ~0.023 USD/GB, Standard-IA: ~0.0125 USD/GB, Glacier: ~0.004 USD/GB\n"
 
     prompt = f"""AWS S3 FinOps. Analyze metrics, output JSON only.
 
