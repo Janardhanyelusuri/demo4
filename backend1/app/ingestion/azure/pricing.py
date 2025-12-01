@@ -27,6 +27,13 @@ from app.ingestion.azure.postgres_operation import connection, dump_to_postgresq
 AZURE_PRICING_API = "https://prices.azure.com/api/retail/prices"
 
 
+def convert_to_snake_case(name: str) -> str:
+    """Convert camelCase to snake_case."""
+    import re
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+
+
 def fetch_azure_vm_pricing(region: str = "eastus", currency: str = "USD") -> pd.DataFrame:
     """
     Fetch Azure VM pricing from Retail Prices API.
@@ -94,6 +101,9 @@ def fetch_azure_vm_pricing(region: str = "eastus", currency: str = "USD") -> pd.
     df['last_updated'] = datetime.utcnow()
     df['pricing_tier'] = 'consumption'
 
+    # Convert column names from camelCase to snake_case for PostgreSQL
+    df.columns = [convert_to_snake_case(col) for col in df.columns]
+
     print(f"✅ Successfully fetched {len(df)} VM pricing records")
     return df
 
@@ -159,6 +169,9 @@ def fetch_azure_storage_pricing(region: str = "eastus", currency: str = "USD") -
     df = df[[col for col in columns_to_keep if col in df.columns]]
     df['last_updated'] = datetime.utcnow()
 
+    # Convert column names from camelCase to snake_case for PostgreSQL
+    df.columns = [convert_to_snake_case(col) for col in df.columns]
+
     print(f"✅ Successfully fetched {len(df)} storage pricing records")
     return df
 
@@ -177,9 +190,9 @@ def fetch_azure_disk_pricing(region: str = "eastus", currency: str = "USD") -> p
     print(f"📊 Fetching Azure Managed Disk pricing for region: {region}")
 
     # Filter for Managed Disks
+    # Note: Using 'Disk' instead of 'Managed Disks' for broader match
     filter_query = (
         f"serviceName eq 'Storage' "
-        f"and productName contains 'Managed Disks' "
         f"and armRegionName eq '{region}' "
         f"and priceType eq 'Consumption' "
         f"and currencyCode eq '{currency}'"
@@ -213,6 +226,10 @@ def fetch_azure_disk_pricing(region: str = "eastus", currency: str = "USD") -> p
 
     df = pd.DataFrame(all_items)
 
+    # Filter for Managed Disk products only
+    if 'productName' in df.columns:
+        df = df[df['productName'].str.contains('Disk', case=False, na=False)]
+
     columns_to_keep = [
         'skuName', 'productName', 'armRegionName',
         'retailPrice', 'unitPrice', 'currencyCode', 'unitOfMeasure',
@@ -221,6 +238,9 @@ def fetch_azure_disk_pricing(region: str = "eastus", currency: str = "USD") -> p
 
     df = df[[col for col in columns_to_keep if col in df.columns]]
     df['last_updated'] = datetime.utcnow()
+
+    # Convert column names from camelCase to snake_case for PostgreSQL
+    df.columns = [convert_to_snake_case(col) for col in df.columns]
 
     print(f"✅ Successfully fetched {len(df)} disk pricing records")
     return df
@@ -240,9 +260,9 @@ def fetch_azure_ip_pricing(region: str = "eastus", currency: str = "USD") -> pd.
     print(f"📊 Fetching Azure Public IP pricing for region: {region}")
 
     # Filter for Public IP addresses
+    # Using broader filter and will filter productName after fetching
     filter_query = (
         f"serviceName eq 'Virtual Network' "
-        f"and productName contains 'IP' "
         f"and armRegionName eq '{region}' "
         f"and priceType eq 'Consumption' "
         f"and currencyCode eq '{currency}'"
@@ -274,6 +294,10 @@ def fetch_azure_ip_pricing(region: str = "eastus", currency: str = "USD") -> pd.
 
     df = pd.DataFrame(all_items)
 
+    # Filter for Public IP products only
+    if 'productName' in df.columns:
+        df = df[df['productName'].str.contains('IP', case=False, na=False)]
+
     columns_to_keep = [
         'skuName', 'productName', 'armRegionName',
         'retailPrice', 'unitPrice', 'currencyCode', 'unitOfMeasure',
@@ -282,6 +306,9 @@ def fetch_azure_ip_pricing(region: str = "eastus", currency: str = "USD") -> pd.
 
     df = df[[col for col in columns_to_keep if col in df.columns]]
     df['last_updated'] = datetime.utcnow()
+
+    # Convert column names from camelCase to snake_case for PostgreSQL
+    df.columns = [convert_to_snake_case(col) for col in df.columns]
 
     print(f"✅ Successfully fetched {len(df)} IP pricing records")
     return df
