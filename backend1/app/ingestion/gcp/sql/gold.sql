@@ -119,7 +119,7 @@ SELECT
     contracted_cost,
     charge_description,
     charge_category,
-    substr(cast(digest(tags::text, 'sha256') as text), 3, 64) as tags_key,
+    md5(tags::text) as tags_key,
     __budget__::integer AS monthly_budget,
     consumed_quantity,
     pricing_quantity,
@@ -140,7 +140,7 @@ CREATE OR REPLACE FUNCTION gcp_tags_view_generation()
 RETURNS text AS $$
 DECLARE
     record_tagkey record;
-    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_gcp_tags_dim AS\nSELECT DISTINCT\n    substr(cast(digest(cast(tags AS text), ''sha256'') AS text), 3, 64) AS tags_key,');
+    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_gcp_tags_dim AS\nSELECT DISTINCT\n    md5(cast(tags AS text)) AS tags_key,');
 BEGIN
     -- Loop through each distinct tag key
     FOR record_tagkey IN

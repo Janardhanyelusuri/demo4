@@ -12,7 +12,7 @@ FROM
 CREATE OR REPLACE VIEW __schema__.gold_aws_fact_cost AS
 SELECT
     line_item_usage_account_id AS usage_account_id,
-    substr(cast(digest(resource_tags::text, 'sha256') AS text), 3, 64) AS tags_key,
+    md5(resource_tags::text) AS tags_key,
     line_item_usage_date AS usage_date,
     line_item_unblended_cost AS unblended_cost,
     line_item_blended_cost AS blended_cost,
@@ -67,7 +67,7 @@ CREATE OR REPLACE FUNCTION aws_tags_view_generation()
 RETURNS text AS $$
 DECLARE
     record_tagkey record;
-    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_aws_tags AS\nSELECT DISTINCT\n    substr(cast(digest(cast(resource_tags AS text), \'sha256\') AS text), 3, 64) AS tags_key,');
+    q_statement text = format(E'CREATE OR REPLACE VIEW __schema__.gold_aws_tags AS\nSELECT DISTINCT\n    md5(cast(resource_tags AS text)) AS tags_key,');
 BEGIN
     -- Loop through each distinct tag key from resource_tags
     FOR record_tagkey IN
