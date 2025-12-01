@@ -247,6 +247,19 @@ def generate_s3_prompt(bucket_data: dict) -> str:
             s3_pricing = get_s3_storage_class_pricing(schema_name, region)
             # Assume current storage class is S3 Standard (most common default)
             current_class = "STANDARD"
+
+            # Debug: Print fetched pricing
+            print(f"\n{'='*60}")
+            print(f"PRICING DEBUG - AWS S3: {bucket_name} in {region}")
+            print(f"{'='*60}")
+            print(f"S3 STORAGE CLASS PRICING (Top 5):")
+            if s3_pricing:
+                for idx, (storage_class, info) in enumerate(list(s3_pricing.items())[:5], 1):
+                    print(f"  {idx}. {storage_class}: {info['price_per_unit']:.6f} per {info['unit']}")
+            else:
+                print(f"  No pricing data available")
+            print(f"{'='*60}\n")
+
             pricing_context = "\n\n" + format_s3_pricing_for_llm(s3_pricing, current_class) + "\n"
         except Exception as e:
             LOG.warning(f"Could not fetch S3 pricing: {e}")
@@ -254,7 +267,7 @@ def generate_s3_prompt(bucket_data: dict) -> str:
 
     prompt = f"""AWS S3 FinOps. Analyze metrics, output JSON only.
 
-CONTEXT: {bucket_name} | Region: {region} | {start_date} to {end_date} ({duration_days}d) | Cost: ${billed_cost:.2f}
+CONTEXT: {bucket_name} | Region: {region} | {start_date} to {end_date} ({duration_days}d) | Cost: {billed_cost:.2f}
 
 METRICS:
 {json.dumps(formatted_metrics, indent=2)}

@@ -170,6 +170,15 @@ def _generate_storage_prompt(resource_data: dict, start_date: str, end_date: str
             # Get storage pricing context for different tiers
             storage_pricing = get_storage_pricing_context(schema_name, region)
 
+            # Debug: Print fetched pricing
+            print(f"\n{'='*60}")
+            print(f"PRICING DEBUG - Azure Storage: {current_sku} {current_tier} in {region}")
+            print(f"{'='*60}")
+            print(f"STORAGE PRICING OPTIONS (Top 5):")
+            for idx, (tier, info) in enumerate(list(storage_pricing.items())[:5], 1):
+                print(f"  {idx}. {info['meter_name']}: {info['retail_price']:.6f} per {info['unit_of_measure']}")
+            print(f"{'='*60}\n")
+
             # Format pricing for LLM
             pricing_context = "\n\n" + format_storage_pricing_for_llm(storage_pricing) + "\n"
         except Exception as e:
@@ -180,7 +189,7 @@ def _generate_storage_prompt(resource_data: dict, start_date: str, end_date: str
 
     return f"""Azure Storage FinOps. Analyze metrics, output JSON only.
 
-CONTEXT: {resource_data.get("resource_id", "N/A")} | {current_sku} {current_tier} | {start_date} to {end_date} ({resource_data.get("duration_days", 30)}d) | Cost: ${billed_cost:.2f} (Est: ${monthly_forecast:.2f}/mo, ${annual_forecast:.2f}/yr)
+CONTEXT: {resource_data.get("resource_id", "N/A")} | {current_sku} {current_tier} | {start_date} to {end_date} ({resource_data.get("duration_days", 30)}d) | Cost: {billed_cost:.2f}
 
 METRICS:
 {json.dumps(formatted_metrics, indent=2)}
@@ -225,6 +234,8 @@ def _generate_compute_prompt(resource_data: dict, start_date: str, end_date: str
     formatted_metrics = _format_metrics_for_llm(resource_data, resource_type="vm")
     current_sku = resource_data.get("instance_type", "N/A")
     billed_cost = resource_data.get("billed_cost", 0.0)
+    resource_id = resource_data.get("resource_id", "N/A")
+    duration_days = resource_data.get("duration_days", 30)
 
     # Fetch pricing data from database
     schema_name = resource_data.get("schema_name", "")
@@ -239,6 +250,22 @@ def _generate_compute_prompt(resource_data: dict, start_date: str, end_date: str
             # Get alternative SKU pricing
             alternative_pricing = get_vm_alternative_pricing(schema_name, current_sku, region, max_results=10)
 
+            # Debug: Print fetched pricing
+            print(f"\n{'='*60}")
+            print(f"PRICING DEBUG - Azure VM: {current_sku} in {region}")
+            print(f"{'='*60}")
+            print(f"CURRENT SKU PRICING:")
+            print(f"  SKU: {current_pricing.get('sku_name')}")
+            print(f"  Hourly: {current_pricing.get('retail_price')}")
+            print(f"  Monthly: {current_pricing.get('monthly_cost')}")
+            print(f"  Currency: {current_pricing.get('currency_code', 'N/A')}")
+            print(f"\nALTERNATIVE SKUs (Top 5):")
+            for idx, alt in enumerate(alternative_pricing[:5], 1):
+                savings = current_pricing['monthly_cost'] - alt['monthly_cost']
+                savings_pct = (savings / current_pricing['monthly_cost']) * 100 if current_pricing['monthly_cost'] > 0 else 0
+                print(f"  {idx}. {alt['sku_name']}: {alt['price_per_hour']}/hr ({alt['monthly_cost']}/mo) - Save {savings_pct:.1f}%")
+            print(f"{'='*60}\n")
+
             # Format pricing for LLM
             pricing_context = "\n\n" + format_vm_pricing_for_llm(current_pricing, alternative_pricing) + "\n"
         except Exception as e:
@@ -249,28 +276,28 @@ def _generate_compute_prompt(resource_data: dict, start_date: str, end_date: str
 
     return f"""Azure VM FinOps. Analyze metrics, output JSON only.
 
-CONTEXT: {resource_data.get("resource_id", "N/A")} | SKU: {current_sku} | {start_date} to {end_date} ({resource_data.get("duration_days", 30)}d) | Cost: ${billed_cost:.2f} (Est: ${monthly_forecast:.2f}/mo, ${annual_forecast:.2f}/yr)
+CONTEXT: {resource_id} | SKU: {current_sku} | {start_date} to {end_date} ({duration_days}d) | Cost: {billed_cost:.2f}
 
 METRICS:
 {json.dumps(formatted_metrics, indent=2)}
 {pricing_context}
 RULES:
-1. Use exact values+units from METRICS (e.g., "CPU: 12.3% avg, 35.7% max", "Memory: 8.2 GB")
-2. **CRITICAL: Base ALL SKU recommendations on PRICING DATA above. Use exact SKU names and monthly costs from pricing table**
-3. State exact SKU names+specs from PRICING DATA (e.g., "Standard_D4s_v3 ($140/mo) → Standard_B2s ($70/mo)")
-4. Express savings as PERCENTAGES calculated from PRICING DATA (e.g., "Save 50% = ($140-$70)/$140")
-5. **BANNED**: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", "smaller instance", generic statements without pricing
+1. Use exact values+units from METRICS
+2. **CRITICAL: Base ALL SKU recommendations on PRICING DATA above. Use exact SKU names and costs from pricing table**
+3. State exact SKU names+specs from PRICING DATA
+4. Express savings as PERCENTAGES calculated from PRICING DATA
+5. **BANNED**: "consider", "review", "optimize", "significant", "could", "should", "it is recommended", generic statements without pricing
 6. Use action verbs: Downsize, Upsize, Purchase, Enable, Disable, Change, Configure, Migrate
 7. Every recommendation MUST reference actual pricing from PRICING DATA section
-8. Always include units: %, GB, vCPU, IOPS, ops/sec, $/month
-9. For contract_deal assessment, compare current hourly rate vs reserved instance pricing (typically 30-40% discount)
+8. Always include units: %, GB, vCPU, IOPS, ops/sec
+9. For contract_deal assessment, compare current rate vs reserved instance pricing
 
-DECIDE: Primary optimization (downsize/upsize/RI/auto-shutdown/disk/other)? VM size change (to which SKU from PRICING DATA, with exact monthly cost)? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies?
+DECIDE: Primary optimization? VM size change to which SKU from PRICING DATA with exact cost? 2-3 additional optimizations? Which metrics drove decisions? 2-3 anomalies?
 
-JSON (MUST: 2-3 additional_recommendation, must include units for values of all 2-3 anomalies metrics):
+JSON (MUST: 2-3 additional_recommendation, must include units for all anomalies):
 {{
   "recommendations": {{
-    "effective_recommendation": {{"text": "[action with exact SKU from PRICING DATA + monthly cost]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
+    "effective_recommendation": {{"text": "[action with exact SKU from PRICING DATA + cost]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
     "additional_recommendation": [
       {{"text": "[action with exact details from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}},
       {{"text": "[action with exact details from PRICING DATA]", "explanation": "[why with metrics + pricing]", "saving_pct": #}}
@@ -412,6 +439,19 @@ def _generate_public_ip_prompt(resource_data: dict, start_date: str, end_date: s
             # Get public IP pricing context
             ip_pricing = get_public_ip_pricing_context(schema_name, region)
 
+            # Debug: Print fetched pricing
+            print(f"\n{'='*60}")
+            print(f"PRICING DEBUG - Azure Public IP: {current_sku} {current_tier} in {region}")
+            print(f"{'='*60}")
+            print(f"PUBLIC IP PRICING OPTIONS:")
+            options = ip_pricing.get('options', [])
+            if options:
+                for idx, opt in enumerate(options, 1):
+                    print(f"  {idx}. {opt['meter_name']}: {opt['retail_price']:.6f}/hr ({opt['monthly_cost']:.2f}/month)")
+            else:
+                print(f"  No pricing options available")
+            print(f"{'='*60}\n")
+
             # Format pricing for LLM
             pricing_context = "\n\n" + format_ip_pricing_for_llm(ip_pricing) + "\n"
         except Exception as e:
@@ -423,7 +463,7 @@ def _generate_public_ip_prompt(resource_data: dict, start_date: str, end_date: s
     # Use f-string for better readability and variable injection
     return f"""Azure Public IP FinOps. Analyze metrics, output JSON only.
 
-CONTEXT: {resource_data.get("resource_id", "N/A")} | {current_sku} {current_tier} | IP: {ip_address} ({allocation_method}) | {start_date} to {end_date} ({resource_data.get("duration_days", 30)}d) | Cost: ${billed_cost:.2f} (Est: ${monthly_forecast:.2f}/mo, ${annual_forecast:.2f}/yr)
+CONTEXT: {resource_data.get("resource_id", "N/A")} | {current_sku} {current_tier} | IP: {ip_address} ({allocation_method}) | {start_date} to {end_date} ({resource_data.get("duration_days", 30)}d) | Cost: {billed_cost:.2f}
 
 METRICS: {json.dumps(formatted_metrics, indent=2)}
 {pricing_context}
